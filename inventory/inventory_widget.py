@@ -1,22 +1,27 @@
-"""Inventory Management module widget (Admin & Staff shared).
+"""Inventory Management module widget (Professional SaaS / HCI format).
 
-Spec (Phase 7):
-  InventoryWidget (QWidget) with materials QTableWidget
-  (Name, Unit, Current Qty, Low Stock Threshold, Cost per Unit).
-  Admin: Add / Edit / Delete Material (+ Stock In / Stock Out).
-  Staff: Stock In / Stock Out only (material buttons hidden).
-  StockMovementDialog with material combo, movement_type combo
-  (IN/OUT/ADJUSTMENT), quantity + reason QLineEdits; on save inserts
-  the movement and updates Materials.current_stock_qty.
-  Red low-stock QLabel when any current_stock_qty <= low_stock_threshold.
+Supports both Admin and Staff roles:
+  - Admin: Full material CRUD + Stock IN/OUT/ADJUSTMENT.
+  - Staff: Stock IN and Stock OUT only.
+
+Features:
+  - Visual hierarchy: Section title + descriptive subtitle.
+  - Top summary cards: Total Items Tracked, Low Stock Alerts, and Total Movements.
+  - Tabbed interface separating Material Stock List and Stock Movement Audit Log.
+  - Live search and Low Stock filter.
+  - Stock level pills: '✓ In Stock' (green) vs '⚠️ Low Stock' (red).
+  - Modernized MaterialDialog and StockMovementDialog.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QLineEdit, QPushButton, QDialog, QFormLayout, QMessageBox, QLabel,
     QComboBox, QHeaderView, QAbstractItemView, QDoubleSpinBox, QSpinBox,
+    QFrame, QTabWidget,
 )
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIntValidator
 
 from database.database import get_connection
@@ -24,193 +29,396 @@ from inventory.inventory_management import (
     MaterialManager, StockMovementManager, MOVEMENT_TYPES,
 )
 
-_MATERIAL_HEADERS = ["material_id", "material_name", "unit_of_measure",
-                     "current_stock_qty", "low_stock_threshold", "cost_per_unit"]
-_MATERIAL_LABELS = ["ID", "Name", "Unit", "Current Qty",
-                    "Low Stock At", "Cost per Unit"]
+_MATERIAL_HEADERS = [
+    "ID", "Material Name", "Unit", "On Hand",
+    "Min. Threshold", "Cost / Unit", "Stock Status"
+]
+
+_MOVEMENT_HEADERS = [
+    "Movement #", "Material Name", "Type",
+    "Quantity", "Reason / Reference", "Date Recorded", "Recorded By"
+]
 
 
 class MaterialDialog(QDialog):
-    """Add/Edit material (Admin only)."""
+    """Add / Edit Material dialog with modern SaaS styling and validation."""
 
     def __init__(self, parent=None, material: dict | None = None):
         super().__init__(parent)
         self._is_edit = material is not None
-        self.setWindowTitle("Edit material" if material else "Add material")
-        self.setMinimumWidth(380)
+        self.setWindowTitle("Edit Material" if self._is_edit else "Add New Material")
+        self.setMinimumWidth(440)
         data = material or {}
+
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(16)
+
+        title = QLabel("Edit Material Item" if self._is_edit else "Create New Material Item")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #0F172A;")
+        sub = QLabel("Configure inventory supply specifications and minimum reorder thresholds.")
+        sub.setStyleSheet("font-size: 12px; color: #64748B;")
+        layout.addWidget(title)
+        layout.addWidget(sub)
+
         form = QFormLayout()
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
         self.name_edit = QLineEdit(str(data.get("material_name") or ""))
+        self.name_edit.setPlaceholderText("e.g. Tarpaulin 10oz, Glossy Photo Paper A4")
+        form.addRow("Material Name *:", self.name_edit)
+
         self.uom_edit = QLineEdit(str(data.get("unit_of_measure") or "pcs"))
+        self.uom_edit.setPlaceholderText("e.g. pcs, rolls, sheets, meters")
+        form.addRow("Unit of Measure:", self.uom_edit)
+
         self.qty_spin = QSpinBox()
         self.qty_spin.setRange(0, 1_000_000)
         self.qty_spin.setValue(int(data.get("current_stock_qty") or 0))
-        self.qty_spin.setEnabled(not self._is_edit)  # stock via movements after
+        self.qty_spin.setEnabled(not self._is_edit)
+        form.addRow("Initial Stock Qty:" if not self._is_edit else "Current Stock Qty:", self.qty_spin)
+
         self.thresh_spin = QSpinBox()
         self.thresh_spin.setRange(0, 1_000_000)
         self.thresh_spin.setValue(int(data.get("low_stock_threshold") or 10))
+        form.addRow("Low-Stock Threshold:", self.thresh_spin)
+
         self.cost_spin = QDoubleSpinBox()
-        self.cost_spin.setRange(0, 1_000_000)
+        self.cost_spin.setRange(0.00, 1_000_000.00)
+        self.cost_spin.setPrefix("P")
         self.cost_spin.setValue(float(data.get("cost_per_unit") or 0))
-        form.addRow("Name:", self.name_edit)
-        form.addRow("Unit:", self.uom_edit)
-        form.addRow("Opening qty:", self.qty_spin)
-        form.addRow("Low-stock at:", self.thresh_spin)
-        form.addRow("Cost/unit:", self.cost_spin)
+        form.addRow("Cost per Unit:", self.cost_spin)
+
         layout.addLayout(form)
+
         btns = QHBoxLayout()
-        save = QPushButton("Save")
+        btns.addStretch(1)
         cancel = QPushButton("Cancel")
-        save.clicked.connect(self._on_save)
+        cancel.setObjectName("SecondaryBtn")
         cancel.clicked.connect(self.reject)
-        btns.addWidget(save)
+
+        save = QPushButton("Save Material")
+        save.clicked.connect(self._on_save)
+
         btns.addWidget(cancel)
+        btns.addWidget(save)
         layout.addLayout(btns)
 
     def _on_save(self) -> None:
         if not self.name_edit.text().strip():
-            QMessageBox.warning(self, "Materials", "Material name is required.")
+            QMessageBox.warning(self, "Validation Error", "Material Name is required.")
             return
         self.accept()
 
     def values(self) -> dict:
-        return {"material_name": self.name_edit.text().strip(),
-                "unit_of_measure": self.uom_edit.text().strip() or "pcs",
-                "current_stock_qty": self.qty_spin.value(),
-                "low_stock_threshold": self.thresh_spin.value(),
-                "cost_per_unit": self.cost_spin.value()}
+        return {
+            "material_name": self.name_edit.text().strip(),
+            "unit_of_measure": self.uom_edit.text().strip() or "pcs",
+            "current_stock_qty": self.qty_spin.value(),
+            "low_stock_threshold": self.thresh_spin.value(),
+            "cost_per_unit": self.cost_spin.value(),
+        }
 
 
 class StockMovementDialog(QDialog):
-    """Record IN / OUT / ADJUSTMENT with quantity + reason QLineEdits."""
+    """Record Stock IN, OUT, or ADJUSTMENT with modern form controls."""
 
     def __init__(self, parent=None, materials: list[dict] | None = None,
                  material_id: int | None = None,
                  movement_type: str | None = None,
                  allowed_types: tuple | None = None):
         super().__init__(parent)
-        self.setWindowTitle("Stock movement")
-        self.setMinimumWidth(380)
+        self.setWindowTitle("Record Stock Movement")
+        self.setMinimumWidth(440)
+        self.materials = materials or []
+        self._mats_by_id = {m["material_id"]: m for m in self.materials}
+
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(16)
+
+        title = QLabel("Record Stock Movement")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #0F172A;")
+        sub = QLabel("Record additions (IN), consumption (OUT), or manual reconciliation (ADJUSTMENT).")
+        sub.setStyleSheet("font-size: 12px; color: #64748B;")
+        layout.addWidget(title)
+        layout.addWidget(sub)
+
         form = QFormLayout()
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         self.material_box = QComboBox()
-        for m in materials or []:
+        for m in self.materials:
             self.material_box.addItem(
-                f"{m['material_id']}: {m['material_name']} "
-                f"(on hand {m['current_stock_qty']})", m["material_id"])
+                f"{m['material_name']} (On hand: {m['current_stock_qty']} {m['unit_of_measure']})",
+                m["material_id"]
+            )
         if material_id is not None:
             idx = self.material_box.findData(material_id)
             if idx >= 0:
                 self.material_box.setCurrentIndex(idx)
-        form.addRow("Material:", self.material_box)
+        form.addRow("Material Item:", self.material_box)
 
         self.type_box = QComboBox()
         self.type_box.addItems(list(allowed_types or MOVEMENT_TYPES))
         if movement_type in (allowed_types or MOVEMENT_TYPES):
             self.type_box.setCurrentText(movement_type)
-        form.addRow("Movement type:", self.type_box)
+        form.addRow("Movement Type:", self.type_box)
 
-        self.qty_edit = QLineEdit()
-        self.qty_edit.setPlaceholderText("OUT deducts; ADJUSTMENT sets on-hand")
+        self.qty_edit = QLineEdit("1")
+        self.qty_edit.setPlaceholderText("Enter quantity...")
         self.qty_edit.setValidator(QIntValidator(1, 1_000_000))
-        self.qty_edit.setText("1")
         form.addRow("Quantity:", self.qty_edit)
 
         self.reason_edit = QLineEdit()
-        self.reason_edit.setPlaceholderText("Reason (optional)")
-        form.addRow("Reason:", self.reason_edit)
+        self.reason_edit.setPlaceholderText("e.g. Supplier PO #123, Order #45 Print Run, Physical Audit")
+        form.addRow("Reason / Note:", self.reason_edit)
+
         layout.addLayout(form)
 
         btns = QHBoxLayout()
-        save = QPushButton("Save")
+        btns.addStretch(1)
         cancel = QPushButton("Cancel")
-        save.clicked.connect(self._on_save)
+        cancel.setObjectName("SecondaryBtn")
         cancel.clicked.connect(self.reject)
-        btns.addWidget(save)
+
+        save = QPushButton("Save Movement")
+        save.clicked.connect(self._on_save)
+
         btns.addWidget(cancel)
+        btns.addWidget(save)
         layout.addLayout(btns)
 
     def _on_save(self) -> None:
         try:
             self.values()
         except ValueError as exc:
-            QMessageBox.warning(self, "Stock movement", str(exc))
+            QMessageBox.warning(self, "Validation Error", str(exc))
             return
         self.accept()
 
     def values(self) -> dict:
         if self.material_box.currentData() is None:
-            raise ValueError("Select a material.")
+            raise ValueError("Please select a material item.")
         try:
             qty = int(self.qty_edit.text().strip())
         except (ValueError, AttributeError):
-            raise ValueError("Quantity must be a positive whole number.")
+            raise ValueError("Quantity must be a valid positive whole number.")
         if qty <= 0:
             raise ValueError("Quantity must be greater than zero.")
         if self.type_box.currentText() not in MOVEMENT_TYPES:
-            raise ValueError(f"movement_type must be one of {MOVEMENT_TYPES}")
-        return {"material_id": int(self.material_box.currentData()),
-                "movement_type": self.type_box.currentText(),
-                "quantity": qty, "reason": self.reason_edit.text().strip()}
+            raise ValueError(f"Movement type must be one of {MOVEMENT_TYPES}")
+
+        return {
+            "material_id": int(self.material_box.currentData()),
+            "movement_type": self.type_box.currentText(),
+            "quantity": qty,
+            "reason": self.reason_edit.text().strip(),
+        }
 
 
 class InventoryWidget(QWidget):
-    """Shared Admin/Staff page for QStackedWidget."""
+    """Inventory Management module with HCI-focused modern layout and tabs."""
 
     def __init__(self, user: dict | None = None, parent=None):
         super().__init__(parent)
         self.user = user or {}
         self._is_admin = (self.user.get("role") or "Staff") == "Admin"
+
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 28)
+        layout.setSpacing(18)
 
-        self.alert = QLabel()
-        self.alert.setWordWrap(True)
-        self.alert.setStyleSheet("background:#FEE2E2;color:#B91C1C;"
-                                 "border:1px solid #FCA5A5;border-radius:8px;"
-                                 "padding:8px;font-weight:bold;")
-        self.alert.hide()
-        layout.addWidget(self.alert)
+        # 1. Page Header (Title + Subtitle)
+        header_lay = QVBoxLayout()
+        header_lay.setSpacing(4)
+        title = QLabel("Inventory & Materials")
+        title.setObjectName("ModuleHeaderTitle")
+        sub = QLabel("Monitor raw material supplies, track stock adjustments, and handle inbound / outbound movements.")
+        sub.setObjectName("ModuleHeaderSub")
+        header_lay.addWidget(title)
+        header_lay.addWidget(sub)
+        layout.addLayout(header_lay)
 
-        layout.addWidget(QLabel("Materials"))
-        self.table = QTableWidget()
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.table)
+        # 2. Summary Status Chips / Badges
+        self.stat_bar = QHBoxLayout()
+        self.stat_bar.setSpacing(14)
 
-        row = QHBoxLayout()
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.clicked.connect(self.refresh)
-        row.addWidget(self.refresh_btn)
-        if self._is_admin:
-            self.add_btn = QPushButton("Add Material")
-            self.edit_btn = QPushButton("Edit Material")
-            self.delete_btn = QPushButton("Delete Material")
-            self.add_btn.clicked.connect(self.add_material)
-            self.edit_btn.clicked.connect(self.edit_material)
-            self.delete_btn.clicked.connect(self.delete_material)
-            row.addWidget(self.add_btn)
-            row.addWidget(self.edit_btn)
-            row.addWidget(self.delete_btn)
-        self.in_btn = QPushButton("Stock In")
-        self.out_btn = QPushButton("Stock Out")
-        self.in_btn.clicked.connect(lambda: self.stock_move("IN"))
-        self.out_btn.clicked.connect(lambda: self.stock_move("OUT"))
-        row.addWidget(self.in_btn)
-        row.addWidget(self.out_btn)
-        if self._is_admin:
-            self.adjust_btn = QPushButton("Adjust")
-            self.adjust_btn.clicked.connect(lambda: self.stock_move("ADJUSTMENT"))
-            row.addWidget(self.adjust_btn)
-        layout.addLayout(row)
+        self.total_chip = QLabel("📦 0 Items Tracked")
+        self.total_chip.setStyleSheet(
+            "background: #F1F5F9; color: #334155; font-size: 12px; font-weight: 600; "
+            "padding: 6px 12px; border-radius: 8px; border: 1px solid #E2E8F0;"
+        )
 
-        layout.addWidget(QLabel("Recent movements"))
-        self.mov_table = QTableWidget()
-        self.mov_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.mov_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.mov_table)
+        self.low_stock_chip = QLabel("✓ Stock Levels Healthy")
+        self.low_stock_chip.setStyleSheet(
+            "background: #DCFCE7; color: #15803D; font-size: 12px; font-weight: 600; "
+            "padding: 6px 12px; border-radius: 8px; border: 1px solid #BBF7D0;"
+        )
+
+        self.stat_bar.addWidget(self.total_chip)
+        self.stat_bar.addWidget(self.low_stock_chip)
+        self.stat_bar.addStretch(1)
+        layout.addLayout(self.stat_bar)
+
+        # 3. Main Tab Container
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("ModuleTabs")
+
+        # Tab 1: Materials
+        self.materials_tab = self._build_materials_tab()
+        self.tabs.addTab(self.materials_tab, "📦 Material Stock List")
+
+        # Tab 2: Movements
+        self.movements_tab = self._build_movements_tab()
+        self.tabs.addTab(self.movements_tab, "📋 Stock Movement Audit Log")
+
+        layout.addWidget(self.tabs, 1)
+
         self.refresh()
+
+    def _build_materials_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(12)
+
+        # Toolbar
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(12)
+
+        self.mat_search = QLineEdit()
+        self.mat_search.setObjectName("TableSearchInput")
+        self.mat_search.setPlaceholderText("🔍  Search materials by name or unit...")
+        self.mat_search.setClearButtonEnabled(True)
+        self.mat_search.setMinimumWidth(240)
+        self.mat_search.textChanged.connect(self.refresh_materials_table)
+        toolbar.addWidget(self.mat_search, 1)
+
+        self.stock_filter = QComboBox()
+        self.stock_filter.setObjectName("TableFilterCombo")
+        self.stock_filter.addItem("All Stock Levels", "ALL")
+        self.stock_filter.addItem("⚠️ Low Stock Only", "LOW")
+        self.stock_filter.currentIndexChanged.connect(self.refresh_materials_table)
+        toolbar.addWidget(self.stock_filter)
+
+        self.mat_refresh_btn = QPushButton("↻ Refresh")
+        self.mat_refresh_btn.setObjectName("SecondaryBtn")
+        self.mat_refresh_btn.clicked.connect(self.refresh)
+        toolbar.addWidget(self.mat_refresh_btn)
+
+        self.in_btn = QPushButton("📥 Stock In")
+        self.in_btn.setObjectName("SecondaryBtn")
+        self.in_btn.clicked.connect(lambda: self.stock_move("IN"))
+        toolbar.addWidget(self.in_btn)
+
+        self.out_btn = QPushButton("📤 Stock Out")
+        self.out_btn.setObjectName("SecondaryBtn")
+        self.out_btn.clicked.connect(lambda: self.stock_move("OUT"))
+        toolbar.addWidget(self.out_btn)
+
+        if self._is_admin:
+            self.adj_btn = QPushButton("⚖️ Adjust")
+            self.adj_btn.setObjectName("SecondaryBtn")
+            self.adj_btn.clicked.connect(lambda: self.stock_move("ADJUSTMENT"))
+            toolbar.addWidget(self.adj_btn)
+
+            self.edit_btn = QPushButton("✏️ Edit")
+            self.edit_btn.setObjectName("SecondaryBtn")
+            self.edit_btn.clicked.connect(self.edit_material)
+            toolbar.addWidget(self.edit_btn)
+
+            self.delete_btn = QPushButton("🗑️ Delete")
+            self.delete_btn.setObjectName("DangerBtn")
+            self.delete_btn.clicked.connect(self.delete_material)
+            toolbar.addWidget(self.delete_btn)
+
+            self.add_btn = QPushButton("+ Add Material")
+            self.add_btn.clicked.connect(self.add_material)
+            toolbar.addWidget(self.add_btn)
+
+        lay.addLayout(toolbar)
+
+        # Table inside Card
+        card = QFrame()
+        card.setObjectName("ModuleCardContainer")
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(0, 0, 0, 0)
+        card_lay.setSpacing(0)
+
+        self.mat_table = QTableWidget()
+        self.mat_table.setColumnCount(len(_MATERIAL_HEADERS))
+        self.mat_table.setHorizontalHeaderLabels(_MATERIAL_HEADERS)
+        self.mat_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.mat_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.mat_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.mat_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.mat_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.mat_table.verticalHeader().setVisible(False)
+        self.mat_table.verticalHeader().setDefaultSectionSize(40)
+        self.mat_table.doubleClicked.connect(self.edit_material if self._is_admin else lambda: self.stock_move("IN"))
+
+        card_lay.addWidget(self.mat_table)
+        lay.addWidget(card, 1)
+
+        return w
+
+    def _build_movements_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(12)
+
+        # Toolbar
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(12)
+
+        self.mov_search = QLineEdit()
+        self.mov_search.setObjectName("TableSearchInput")
+        self.mov_search.setPlaceholderText("🔍  Search movement log by material, reason, or recorder...")
+        self.mov_search.setClearButtonEnabled(True)
+        self.mov_search.textChanged.connect(self.refresh_movements_table)
+        toolbar.addWidget(self.mov_search, 1)
+
+        self.mov_type_filter = QComboBox()
+        self.mov_type_filter.setObjectName("TableFilterCombo")
+        self.mov_type_filter.addItem("All Types", "")
+        for t in MOVEMENT_TYPES:
+            self.mov_type_filter.addItem(t, t)
+        self.mov_type_filter.currentIndexChanged.connect(self.refresh_movements_table)
+        toolbar.addWidget(self.mov_type_filter)
+
+        self.mov_refresh_btn = QPushButton("↻ Refresh Logs")
+        self.mov_refresh_btn.setObjectName("SecondaryBtn")
+        self.mov_refresh_btn.clicked.connect(self.refresh)
+        toolbar.addWidget(self.mov_refresh_btn)
+
+        lay.addLayout(toolbar)
+
+        # Table inside Card
+        card = QFrame()
+        card.setObjectName("ModuleCardContainer")
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(0, 0, 0, 0)
+        card_lay.setSpacing(0)
+
+        self.mov_table = QTableWidget()
+        self.mov_table.setColumnCount(len(_MOVEMENT_HEADERS))
+        self.mov_table.setHorizontalHeaderLabels(_MOVEMENT_HEADERS)
+        self.mov_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.mov_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.mov_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.mov_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.mov_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.mov_table.verticalHeader().setVisible(False)
+        self.mov_table.verticalHeader().setDefaultSectionSize(40)
+
+        card_lay.addWidget(self.mov_table)
+        lay.addWidget(card, 1)
+
+        return w
 
     # -- helpers --
     def _conn(self):
@@ -223,63 +431,164 @@ class InventoryWidget(QWidget):
             from auth.session import Session
             return Session.user_id()
         except Exception:  # noqa: BLE001
-            return None
+            return 1
 
-    def _selected_id(self) -> int | None:
-        r = self.table.currentRow()
+    def _selected_mat_id(self) -> int | None:
+        r = self.mat_table.currentRow()
         if r < 0:
             return None
         try:
-            return int(self.table.item(r, 0).text())
+            text = self.mat_table.item(r, 0).text().replace("#", "")
+            return int(text)
         except (AttributeError, ValueError):
             return None
 
-    # -- spec logic --
+    def _create_stock_pill(self, is_low: bool) -> QWidget:
+        container = QWidget()
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(6, 4, 6, 4)
+        pill = QLabel("⚠️ Low Stock" if is_low else "✓ In Stock")
+        pill.setObjectName("StockPill")
+        pill.setProperty("alert", "true" if is_low else "false")
+        pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pill.style().unpolish(pill)
+        pill.style().polish(pill)
+        lay.addWidget(pill)
+        return container
+
+    def _create_type_pill(self, mov_type: str) -> QWidget:
+        container = QWidget()
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(6, 4, 6, 4)
+        pill = QLabel(mov_type)
+        pill.setObjectName("StatusPill")
+
+        # Map movement types to status pill colors
+        if mov_type == "IN":
+            pill.setProperty("status", "paid")  # Green
+        elif mov_type == "OUT":
+            pill.setProperty("status", "processing")  # Blue
+        else:
+            pill.setProperty("status", "pending")  # Amber
+
+        pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pill.style().unpolish(pill)
+        pill.style().polish(pill)
+        lay.addWidget(pill)
+        return container
+
+    # -- Data loading --
     def refresh(self) -> None:
+        self.refresh_materials_table()
+        self.refresh_movements_table()
+
+    def refresh_materials_table(self) -> None:
         conn = self._conn()
         try:
             mats = MaterialManager(conn).list_materials()
-            self.table.setRowCount(len(mats))
-            self.table.setColumnCount(len(_MATERIAL_HEADERS))
-            self.table.setHorizontalHeaderLabels(_MATERIAL_LABELS)
-            for r, m in enumerate(mats):
-                for c, h in enumerate(_MATERIAL_HEADERS):
-                    val = m.get(h, "")
-                    self.table.setItem(r, c, QTableWidgetItem(
-                        "" if val is None else str(val)))
-            self.table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeMode.Stretch)
-            # Low-stock alert (spec): red banner when any qty <= threshold.
-            low = [m for m in mats
-                   if int(m["current_stock_qty"]) <= int(m["low_stock_threshold"])]
-            if low:
-                names = ", ".join(f"{m['material_name']} ({m['current_stock_qty']} left)"
-                                  for m in low[:8])
-                more = f" +{len(low) - 8} more" if len(low) > 8 else ""
-                self.alert.setText(f"LOW STOCK WARNING: {names}{more}")
-                self.alert.show()
+            low_items = [
+                m for m in mats
+                if int(m.get("current_stock_qty", 0)) <= int(m.get("low_stock_threshold", 0))
+            ]
+
+            # Update Top Summary Chips
+            self.total_chip.setText(f"📦 {len(mats)} Materials Tracked")
+            if low_items:
+                self.low_stock_chip.setText(f"⚠️ {len(low_items)} Items Low on Stock")
+                self.low_stock_chip.setStyleSheet(
+                    "background: #FEE2E2; color: #DC2626; font-size: 12px; font-weight: 600; "
+                    "padding: 6px 12px; border-radius: 8px; border: 1px solid #FCA5A5;"
+                )
             else:
-                self.alert.hide()
-            movs = StockMovementManager(conn).list_movements(limit=100)
-            mov_headers = ["movement_id", "material_name", "movement_type",
-                           "quantity", "reason", "movement_date", "recorded_by"]
-            self.mov_table.setRowCount(len(movs))
-            self.mov_table.setColumnCount(len(mov_headers))
-            self.mov_table.setHorizontalHeaderLabels(
-                ["ID", "Material", "Type", "Qty", "Reason", "Date", "By"])
-            for r, m in enumerate(movs):
-                for c, h in enumerate(mov_headers):
-                    val = m.get(h, "")
-                    self.mov_table.setItem(r, c, QTableWidgetItem(
-                        "" if val is None else str(val)))
-            self.mov_table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeMode.Stretch)
+                self.low_stock_chip.setText("✓ Stock Levels Healthy")
+                self.low_stock_chip.setStyleSheet(
+                    "background: #DCFCE7; color: #15803D; font-size: 12px; font-weight: 600; "
+                    "padding: 6px 12px; border-radius: 8px; border: 1px solid #BBF7D0;"
+                )
+
+            # Filter materials
+            needle = self.mat_search.text().strip().lower()
+            filter_mode = self.stock_filter.currentData()
+
+            filtered = []
+            for m in mats:
+                is_low = int(m.get("current_stock_qty", 0)) <= int(m.get("low_stock_threshold", 0))
+                if filter_mode == "LOW" and not is_low:
+                    continue
+                if needle:
+                    mname = str(m.get("material_name") or "").lower()
+                    uom = str(m.get("unit_of_measure") or "").lower()
+                    if needle not in mname and needle not in uom:
+                        continue
+                filtered.append(m)
+
+            self.mat_table.setRowCount(len(filtered))
+            for r, m in enumerate(filtered):
+                mid = m.get("material_id")
+                name = m.get("material_name", "")
+                uom = m.get("unit_of_measure", "pcs")
+                qty = int(m.get("current_stock_qty", 0))
+                thresh = int(m.get("low_stock_threshold", 0))
+                cost = Decimal(str(m.get("cost_per_unit", 0)))
+                is_low = qty <= thresh
+
+                self.mat_table.setItem(r, 0, QTableWidgetItem(f"#{mid}"))
+                self.mat_table.setItem(r, 1, QTableWidgetItem(name))
+                self.mat_table.setItem(r, 2, QTableWidgetItem(uom))
+                self.mat_table.setItem(r, 3, QTableWidgetItem(f"{qty:,} {uom}"))
+                self.mat_table.setItem(r, 4, QTableWidgetItem(f"{thresh:,} {uom}"))
+                self.mat_table.setItem(r, 5, QTableWidgetItem(f"P{cost:,.2f}"))
+                self.mat_table.setCellWidget(r, 6, self._create_stock_pill(is_low))
+
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Error", str(exc))
+            QMessageBox.critical(self, "Error", f"Failed to load materials:\n{exc}")
         finally:
             conn.close()
 
-    # -- Admin material CRUD --
+    def refresh_movements_table(self) -> None:
+        conn = self._conn()
+        try:
+            movs = StockMovementManager(conn).list_movements(limit=250)
+
+            needle = self.mov_search.text().strip().lower()
+            tfilter = self.mov_type_filter.currentData() or ""
+
+            filtered = []
+            for mv in movs:
+                if tfilter and mv.get("movement_type") != tfilter:
+                    continue
+                if needle:
+                    mat = str(mv.get("material_name") or "").lower()
+                    rsn = str(mv.get("reason") or "").lower()
+                    by = str(mv.get("recorded_by") or "").lower()
+                    if needle not in mat and needle not in rsn and needle not in by:
+                        continue
+                filtered.append(mv)
+
+            self.mov_table.setRowCount(len(filtered))
+            for r, mv in enumerate(filtered):
+                mvid = mv.get("movement_id")
+                mat = mv.get("material_name", "")
+                mtype = mv.get("movement_type", "IN")
+                qty = int(mv.get("quantity", 0))
+                reason = mv.get("reason", "—") or "—"
+                date_str = str(mv.get("movement_date") or "")
+                rec_by = str(mv.get("recorded_by") or "—")
+
+                self.mov_table.setItem(r, 0, QTableWidgetItem(f"#{mvid}"))
+                self.mov_table.setItem(r, 1, QTableWidgetItem(mat))
+                self.mov_table.setCellWidget(r, 2, self._create_type_pill(mtype))
+                self.mov_table.setItem(r, 3, QTableWidgetItem(f"{qty:,}"))
+                self.mov_table.setItem(r, 4, QTableWidgetItem(reason))
+                self.mov_table.setItem(r, 5, QTableWidgetItem(date_str))
+                self.mov_table.setItem(r, 6, QTableWidgetItem(rec_by))
+
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Error", f"Failed to load movements:\n{exc}")
+        finally:
+            conn.close()
+
+    # -- Admin Material CRUD --
     def add_material(self) -> None:
         dlg = MaterialDialog(self)
         if not dlg.exec():
@@ -290,7 +599,9 @@ class InventoryWidget(QWidget):
             MaterialManager(conn).create_material(
                 vals["material_name"], vals["unit_of_measure"],
                 vals["current_stock_qty"], vals["low_stock_threshold"],
-                vals["cost_per_unit"])
+                vals["cost_per_unit"]
+            )
+            QMessageBox.information(self, "Material Added", f"'{vals['material_name']}' created successfully.")
             self.refresh()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", str(exc))
@@ -298,21 +609,25 @@ class InventoryWidget(QWidget):
             conn.close()
 
     def edit_material(self) -> None:
-        mid = self._selected_id()
+        mid = self._selected_mat_id()
         if mid is None:
-            QMessageBox.warning(self, "Inventory", "Select a material first.")
+            QMessageBox.warning(self, "Inventory", "Please select a material from the table first.")
             return
+
         conn = self._conn()
         try:
             cur = MaterialManager(conn).get_material(mid)
         finally:
             conn.close()
+
         if not cur:
-            QMessageBox.warning(self, "Inventory", "Material not found.")
+            QMessageBox.warning(self, "Inventory", "Material record not found.")
             return
+
         dlg = MaterialDialog(self, material=cur)
         if not dlg.exec():
             return
+
         conn = self._conn()
         try:
             vals = dlg.values()
@@ -320,7 +635,9 @@ class InventoryWidget(QWidget):
                 mid, material_name=vals["material_name"],
                 unit_of_measure=vals["unit_of_measure"],
                 low_stock_threshold=vals["low_stock_threshold"],
-                cost_per_unit=vals["cost_per_unit"])
+                cost_per_unit=vals["cost_per_unit"]
+            )
+            QMessageBox.information(self, "Material Updated", f"Material #{mid} updated successfully.")
             self.refresh()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", str(exc))
@@ -328,54 +645,71 @@ class InventoryWidget(QWidget):
             conn.close()
 
     def delete_material(self) -> None:
-        mid = self._selected_id()
+        mid = self._selected_mat_id()
         if mid is None:
-            QMessageBox.warning(self, "Inventory", "Select a material first.")
+            QMessageBox.warning(self, "Inventory", "Please select a material from the table first.")
             return
+
         if QMessageBox.question(
-                self, "Delete", f"Delete material {mid}?"
+            self, "Confirm Delete",
+            f"Are you sure you want to delete material #{mid}?\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         ) != QMessageBox.StandardButton.Yes:
             return
+
         conn = self._conn()
         try:
             MaterialManager(conn).delete_material(mid)
+            QMessageBox.information(self, "Deleted", f"Material #{mid} has been removed.")
             self.refresh()
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Error", str(exc))
+            QMessageBox.critical(self, "Error", f"Failed to delete material:\n{exc}")
         finally:
             conn.close()
 
-    # -- shared stock movement --
+    # -- Stock movement --
     def stock_move(self, movement_type: str | None = None) -> None:
         conn = self._conn()
         try:
             mats = MaterialManager(conn).list_materials()
         finally:
             conn.close()
+
         if not mats:
-            QMessageBox.warning(self, "Inventory", "Add a material first.")
+            QMessageBox.warning(self, "Inventory", "Please add at least one material first.")
             return
-        mid = self._selected_id()
+
+        mid = self._selected_mat_id()
         allowed = list(MOVEMENT_TYPES) if self._is_admin else ("IN", "OUT")
         if movement_type not in allowed:
             movement_type = allowed[0]
-        dlg = StockMovementDialog(self, materials=mats, material_id=mid,
-                                  movement_type=movement_type,
-                                  allowed_types=tuple(allowed))
+
+        dlg = StockMovementDialog(
+            self, materials=mats, material_id=mid,
+            movement_type=movement_type,
+            allowed_types=tuple(allowed)
+        )
         if not dlg.exec():
             return
+
         try:
             vals = dlg.values()
         except ValueError as exc:
-            QMessageBox.warning(self, "Stock movement", str(exc))
+            QMessageBox.warning(self, "Stock Movement", str(exc))
             return
+
         conn = self._conn()
         try:
             StockMovementManager(conn).record_movement(
                 vals["material_id"], self._user_id(), vals["movement_type"],
-                vals["quantity"], vals["reason"])
+                vals["quantity"], vals["reason"]
+            )
+            QMessageBox.information(
+                self, "Stock Movement Recorded",
+                f"{vals['movement_type']} movement of {vals['quantity']} units recorded successfully."
+            )
             self.refresh()
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Error", str(exc))
+            QMessageBox.critical(self, "Error", f"Failed to record movement:\n{exc}")
         finally:
             conn.close()

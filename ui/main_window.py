@@ -1,33 +1,39 @@
-"""Main Window shell: left nav + QStackedWidget + status bar.
+"""Main Window shell: modern SaaS layout (Rhombus reference style).
 
-The global Rich Gold theme (ui/styles.qss) is applied once in main.py
-via app.setStyleSheet(); windows must not override it.
-
-RBAC:
-  Admin -> Dashboard, Customers, Orders, Payments, Inventory, Expenses,
-           Reports, Backup, Users (full access).
-  Staff -> Dashboard, Inventory only.
-
-Module pages are reused from the existing AdminDashboard / StaffDashboard
-tab builders so all business logic stays in one place. The backend
-dashboard instance is kept alive (never shown) as the slot owner.
+Structure:
+  - Top App Header: Global search input, live alert notifications, user profile pill (avatar + name + role), and logout.
+  - Left Sidebar: Clean white branded sidebar with AkoNi logo, icon-adorned nav items, active pill highlighting, and footer info.
+  - Central Area: QStackedWidget hosting Dashboard and all business modules.
+  - Interactive Navigation: Dashboard action links ('View full report >') automatically switch to the corresponding module.
 """
 from __future__ import annotations
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget,
-    QStackedWidget, QToolBar, QLabel, QPushButton, QStatusBar,
-    QMessageBox, QGridLayout,
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QListWidgetItem,
+    QStackedWidget, QLabel, QPushButton, QLineEdit, QFrame, QMessageBox,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 
 from database.database import get_connection
-from reports.reports import ReportManager
 
-# Nav labels per role. Admin keeps the full spec set + Backup/Users.
-ADMIN_NAV = ["Dashboard", "Customers", "Orders", "Payments", "Inventory",
-             "Expenses", "Reports", "Backup", "Users"]
+# Navigation items per role
+ADMIN_NAV = [
+    "Dashboard", "Customers", "Orders", "Payments", "Inventory",
+    "Expenses", "Reports", "Backup", "Users",
+]
 STAFF_NAV = ["Dashboard", "Inventory"]
+
+NAV_ICONS = {
+    "Dashboard": "📊",
+    "Customers": "👥",
+    "Orders": "🛒",
+    "Payments": "💳",
+    "Inventory": "📦",
+    "Expenses": "💸",
+    "Reports": "📈",
+    "Backup": "💾",
+    "Users": "👤",
+}
 
 
 class MainWindow(QMainWindow):
@@ -36,69 +42,197 @@ class MainWindow(QMainWindow):
         self.user = user
         self.logout_requested = False
         self._is_admin = user.get("role") == "Admin"
-        self.setWindowTitle(
-            f"AkoNi Printing — {'Admin' if self._is_admin else 'Staff'}"
-            f" ({user.get('username', '')})")
-        self.resize(1200, 750)
 
-        self._setup_toolbar()
-        self._setup_body()
-        self._setup_statusbar()
+        role_label = "Admin" if self._is_admin else "Staff"
+        username = user.get("username", "")
+        self.setWindowTitle(f"AkoNi Printing Services — {role_label} ({username})")
+        self.resize(1280, 800)
+        self.setMinimumSize(1080, 680)
 
-    # ---------- chrome ----------
-    def _setup_toolbar(self) -> None:
-        bar = QToolBar("Session")
-        bar.setMovable(False)
-        name = f"{self.user.get('first_name', '')} {self.user.get('last_name', '')}".strip()
-        bar.addWidget(QLabel(
-            f"AkoNi Printing Services   |   {self.user.get('username', '')}"
-            f" ({self.user.get('role', '')})"
-            f"{' — ' + name if name else ''}  "))
-        bar.addSeparator()
-        logout_btn = QPushButton("Logout")
-        logout_btn.clicked.connect(self.request_logout)
-        bar.addWidget(logout_btn)
-        self.addToolBar(bar)
+        self._setup_ui()
 
-    def _setup_body(self) -> None:
-        central = QWidget()
-        layout = QHBoxLayout(central)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+    def _setup_ui(self) -> None:
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)
 
-        self.nav = QListWidget()
-        self.nav.setObjectName("NavList")
-        self.nav.setMaximumWidth(190)
-        self.nav.setMinimumWidth(170)
-        self.nav.setVerticalScrollMode(self.nav.ScrollMode.ScrollPerPixel)
-        layout.addWidget(self.nav)
+        root_layout = QVBoxLayout(central_widget)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        # 1. Top App Header (Search + User profile + Logout)
+        header_widget = self._build_header()
+        root_layout.addWidget(header_widget)
+
+        # 2. Main Body: Left Sidebar + Central QStackedWidget
+        body_layout = QHBoxLayout()
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+
+        sidebar_widget = self._build_sidebar()
+        body_layout.addWidget(sidebar_widget)
 
         self.stack = QStackedWidget()
-        layout.addWidget(self.stack, 1)
-        self.setCentralWidget(central)
+        self.stack.setObjectName("MainContentStack")
+        body_layout.addWidget(self.stack, 1)
 
+        root_layout.addLayout(body_layout, 1)
+
+        # 3. Populate Pages
         self._build_pages()
+
+        # Connect navigation selection
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
         if self.nav.count():
             self.nav.setCurrentRow(0)
 
-    def _setup_statusbar(self) -> None:
-        status = QStatusBar()
-        self.setStatusBar(status)
-        status.showMessage(
-            f"Logged in as: {self.user.get('username', '')}"
-            f" - {self.user.get('role', '')}")
+        # Clear initial focus from search bar
+        self.setFocus()
 
-    def request_logout(self) -> None:
-        from auth.session import Session
-        Session.clear()
-        self.logout_requested = True
-        self.close()
+    # -- Top Header Bar ------------------------------------------------
+    def _build_header(self) -> QWidget:
+        header = QFrame()
+        header.setObjectName("AppHeader")
+        header.setFixedHeight(62)
 
-    # ---------- pages ----------
+        lay = QHBoxLayout(header)
+        lay.setContentsMargins(20, 0, 24, 0)
+        lay.setSpacing(16)
+        lay.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        # Global search input (styled rounded input matching reference)
+        self.search_input = QLineEdit()
+        self.search_input.setObjectName("GlobalSearchBar")
+        self.search_input.setPlaceholderText("🔍  Search orders, customers, inventory...")
+        self.search_input.setFixedWidth(360)
+        self.search_input.returnPressed.connect(self._handle_global_search)
+        lay.addWidget(self.search_input)
+
+        lay.addStretch(1)
+
+        # Right Action Items: Help, Notification Bell, User Capsule, Logout
+        right_box = QHBoxLayout()
+        right_box.setSpacing(14)
+        right_box.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        # Notification / Low stock bell button
+        self.bell_btn = QPushButton("🔔")
+        self.bell_btn.setObjectName("HeaderIconBtn")
+        self.bell_btn.setToolTip("Inventory Alerts")
+        self.bell_btn.clicked.connect(lambda: self.navigate_to_tab("Inventory"))
+        right_box.addWidget(self.bell_btn)
+
+        # Divider
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setObjectName("HeaderDivider")
+        sep.setFixedSize(1, 24)
+        right_box.addWidget(sep)
+
+        # User Initials Avatar
+        first = self.user.get("first_name", "")
+        last = self.user.get("last_name", "")
+        username = self.user.get("username", "admin")
+        initials = (first[:1] + last[:1]).upper() if (first and last) else username[:2].upper()
+
+        avatar = QLabel(initials)
+        avatar.setObjectName("UserAvatar")
+        avatar.setFixedSize(36, 36)
+        avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        right_box.addWidget(avatar)
+
+        # User details (Name + Role pill)
+        user_info = QVBoxLayout()
+        user_info.setSpacing(1)
+        user_info.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        display_name = f"{first} {last}".strip() or username
+        name_lbl = QLabel(display_name)
+        name_lbl.setObjectName("HeaderUserName")
+
+        role_lbl = QLabel(self.user.get("role", "Staff"))
+        role_lbl.setObjectName("HeaderUserRole")
+
+        user_info.addWidget(name_lbl)
+        user_info.addWidget(role_lbl)
+        right_box.addLayout(user_info)
+
+        # Logout Button
+        logout_btn = QPushButton("Logout")
+        logout_btn.setObjectName("LogoutBtn")
+        logout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        logout_btn.clicked.connect(self.request_logout)
+        right_box.addWidget(logout_btn)
+
+        lay.addLayout(right_box)
+        return header
+
+    # -- Left Sidebar --------------------------------------------------
+    def _build_sidebar(self) -> QWidget:
+        sidebar = QFrame()
+        sidebar.setObjectName("SidebarContainer")
+        sidebar.setFixedWidth(220)
+
+        lay = QVBoxLayout(sidebar)
+        lay.setContentsMargins(12, 18, 12, 18)
+        lay.setSpacing(12)
+
+        # Brand Logo Header
+        brand_box = QHBoxLayout()
+        brand_box.setSpacing(10)
+        brand_box.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        brand_icon = QLabel("🖨️")
+        brand_icon.setObjectName("BrandLogoIcon")
+        brand_icon.setFixedSize(34, 34)
+        brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_box.addWidget(brand_icon)
+
+        brand_text_box = QVBoxLayout()
+        brand_text_box.setSpacing(0)
+        brand_title = QLabel("AkoNi")
+        brand_title.setObjectName("BrandTitle")
+        brand_sub = QLabel("Printing Services")
+        brand_sub.setObjectName("BrandSub")
+        brand_text_box.addWidget(brand_title)
+        brand_text_box.addWidget(brand_sub)
+        brand_box.addLayout(brand_text_box, 1)
+
+        lay.addLayout(brand_box)
+
+        # Sidebar Separator line
+        sep = QFrame()
+        sep.setObjectName("SidebarDivider")
+        sep.setFixedHeight(1)
+        lay.addWidget(sep)
+
+        # Navigation List Widget
+        self.nav = QListWidget()
+        self.nav.setObjectName("NavList")
+        self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        lay.addWidget(self.nav, 1)
+
+        # Footer branding tag
+        footer = QLabel("AkoNi Printing Services\nPOS & Management ERP")
+        footer.setObjectName("SidebarFooter")
+        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(footer)
+
+        return sidebar
+
+    # -- Pages Setup ---------------------------------------------------
     def _build_pages(self) -> None:
-        """Create nav + stacked pages, reusing existing dashboard builders."""
+        nav_labels = ADMIN_NAV if self._is_admin else STAFF_NAV
+
+        # Setup navigation items with icons
+        for label in nav_labels:
+            icon = NAV_ICONS.get(label, "●")
+            item = QListWidgetItem(f" {icon}   {label}")
+            item.setSizeHint(QSize(190, 42))
+            self.nav.addItem(item)
+
         if self._is_admin:
+            from auth.user_widget import UserWidget
             from backup.settings_widget import SettingsWidget
             from customers.customer_widget import CustomerWidget
             from expenses.expense_widget import ExpenseWidget
@@ -107,13 +241,10 @@ class MainWindow(QMainWindow):
             from reports.dashboard_widget import DashboardWidget
             from reports.reports_widget import ReportsWidget
             from sales_orders.order_widget import OrderWidget
-            from ui.admin_dashboard import AdminDashboard
-            # Hidden owner of all slots/signals; never shown.
-            self._backend = AdminDashboard(self.user)
-            hidden_tabs = self._backend.centralWidget()
-            by_title = {hidden_tabs.tabText(i): hidden_tabs.widget(i)
-                        for i in range(hidden_tabs.count())}
-            # Standalone Phase-4/5/6/7/8/9/10 widgets (spec).
+
+            self.dashboard_page = DashboardWidget(user=self.user)
+            self.dashboard_page.navigation_requested.connect(self.navigate_to_tab)
+
             self.customer_page = CustomerWidget()
             self.order_page = OrderWidget(user=self.user)
             self.payment_page = PaymentWidget(user=self.user)
@@ -121,105 +252,51 @@ class MainWindow(QMainWindow):
             self.expense_page = ExpenseWidget(user=self.user)
             self.reports_page = ReportsWidget()
             self.settings_page = SettingsWidget(user=self.user)
-            self.dashboard_page = DashboardWidget(user=self.user)
-            title_map = {
-                "Users": "Users",
-            }
-            self.nav.addItem("Dashboard")
-            self.stack.addWidget(self.dashboard_page)
-            for label in ADMIN_NAV[1:]:
-                self.nav.addItem(label)
-                if label == "Customers":
-                    self.stack.addWidget(self.customer_page)
-                elif label == "Orders":
-                    self.stack.addWidget(self.order_page)
-                elif label == "Payments":
-                    self.stack.addWidget(self.payment_page)
-                elif label == "Inventory":
-                    self.stack.addWidget(self.inventory_page)
-                elif label == "Expenses":
-                    self.stack.addWidget(self.expense_page)
-                elif label == "Reports":
-                    self.stack.addWidget(self.reports_page)
-                elif label == "Backup":
-                    self.stack.addWidget(self.settings_page)
-                else:
-                    self.stack.addWidget(by_title[title_map[label]])
+            self.users_page = UserWidget(current_user=self.user)
+
+            self.stack.addWidget(self.dashboard_page)  # 0: Dashboard
+            self.stack.addWidget(self.customer_page)   # 1: Customers
+            self.stack.addWidget(self.order_page)      # 2: Orders
+            self.stack.addWidget(self.payment_page)    # 3: Payments
+            self.stack.addWidget(self.inventory_page)  # 4: Inventory
+            self.stack.addWidget(self.expense_page)    # 5: Expenses
+            self.stack.addWidget(self.reports_page)    # 6: Reports
+            self.stack.addWidget(self.settings_page)   # 7: Backup
+            self.stack.addWidget(self.users_page)      # 8: Users
         else:
             from inventory.inventory_widget import InventoryWidget
             from reports.dashboard_widget import DashboardWidget
-            self.inventory_page = InventoryWidget(user=self.user)
-            self.dashboard_page = DashboardWidget(user=self.user)
-            # Keep the legacy backend alive (harmless); the spec page is above.
             from ui.staff_dashboard import StaffDashboard
+
             self._backend = StaffDashboard(self.user)
-            self.nav.addItem("Dashboard")
-            self.stack.addWidget(self.dashboard_page)
-            self.nav.addItem("Inventory")
-            self.stack.addWidget(self.inventory_page)
 
-    def _dashboard_home(self, is_admin: bool) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        title = QLabel("Dashboard")
-        title.setObjectName("DashboardTitle")
-        sub = QLabel("Overview of sales, payments, expenses and stock — AkoNi Printing Services")
-        sub.setObjectName("DashboardSub")
-        sub.setWordWrap(True)
-        layout.addWidget(title)
-        layout.addWidget(sub)
+            self.dashboard_page = DashboardWidget(user=self.user)
+            self.dashboard_page.navigation_requested.connect(self.navigate_to_tab)
+            self.inventory_page = InventoryWidget(user=self.user)
 
-        grid = QGridLayout()
-        self._stat_cards: dict[str, QLabel] = {}
-        defs = ([("Revenue collected", "revenue"), ("Expenses", "expenses"),
-                 ("Profit", "profit"), ("Orders", "orders"),
-                 ("Unpaid orders", "unpaid"), ("Low-stock items", "low")]
-                if is_admin else [("Low-stock items", "low")])
-        for i, (label, key) in enumerate(defs):
-            card = QLabel(f"{label}\n—")
-            card.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            card.setMinimumHeight(90)
-            grid.addWidget(card, i // 3, i % 3)
-            self._stat_cards[key] = card
-        layout.addLayout(grid)
+            self.stack.addWidget(self.dashboard_page)  # 0: Dashboard
+            self.stack.addWidget(self.inventory_page)  # 1: Inventory
 
-        refresh_btn = QPushButton("Refresh overview")
-        refresh_btn.clicked.connect(self.refresh_dashboard)
-        layout.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addStretch(1)
-        self.refresh_dashboard()
-        return page
+    # -- Interactive Navigation Handler --------------------------------
+    def navigate_to_tab(self, tab_name: str) -> None:
+        """Switch active page by module label (e.g. from Dashboard quick-links)."""
+        labels = ADMIN_NAV if self._is_admin else STAFF_NAV
+        if tab_name in labels:
+            idx = labels.index(tab_name)
+            self.nav.setCurrentRow(idx)
 
-    def refresh_dashboard(self) -> None:
-        try:
-            conn = get_connection()
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Error", str(exc))
+    def _handle_global_search(self) -> None:
+        query = self.search_input.text().strip()
+        if not query:
             return
-        try:
-            mgr = ReportManager(conn)
-            if self._is_admin:
-                pl = mgr.profit_loss()
-                unpaid = mgr.unpaid_orders()
-                low = [m for m in mgr.inventory_status()
-                       if m["current_stock_qty"] <= m["low_stock_threshold"]]
-                self._set_stat("revenue", f"Revenue collected\n{pl['revenue_collected']}")
-                self._set_stat("expenses", f"Expenses\n{pl['expenses']}")
-                self._set_stat("profit", f"Profit\n{pl['profit']}")
-                self._set_stat("orders",
-                               f"Orders\n{pl['orders']} (booked {pl['order_revenue']})")
-                self._set_stat("unpaid", f"Unpaid orders\n{len(unpaid)}")
-                self._set_stat("low", f"Low-stock items\n{len(low)}")
-            else:
-                low = [m for m in mgr.inventory_status()
-                       if m["current_stock_qty"] <= m["low_stock_threshold"]]
-                self._set_stat("low", f"Low-stock items\n{len(low)}")
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Error", str(exc))
-        finally:
-            conn.close()
+        # If user searches, navigate to Orders or Customers and fill search
+        if self._is_admin:
+            self.navigate_to_tab("Orders")
+            if hasattr(self, "order_page") and hasattr(self.order_page, "search"):
+                self.order_page.search.setText(query)
 
-    def _set_stat(self, key: str, text: str) -> None:
-        card = getattr(self, "_stat_cards", {}).get(key)
-        if card is not None:
-            card.setText(text)
+    def request_logout(self) -> None:
+        from auth.session import Session
+        Session.clear()
+        self.logout_requested = True
+        self.close()

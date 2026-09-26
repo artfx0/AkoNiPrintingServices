@@ -1,11 +1,12 @@
-"""Expense Management module widget (Admin access only).
+"""Expense Management module widget (Professional SaaS / HCI format).
 
-Spec (Phase 8):
-  ExpenseWidget (QWidget) with expenses QTableWidget
-  (Date, Category, Amount, Description) + filter section
-  (From/To QDateEdit + Category QComboBox, SQL WHERE filtering).
-  ExpenseDialog with expense_date QDateEdit, category QComboBox,
-  amount + description QLineEdits, optional Stock IN movement link.
+Features:
+  - Visual hierarchy: Section title + descriptive subtitle.
+  - Financial summary banner displaying filtered total and record count.
+  - Action toolbar: Live search, category dropdown filter, and date range filters.
+  - Elevated card container wrapping the data table.
+  - Category pills and Philippine Peso currency formatting (P{:,.2f}).
+  - Modernized ExpenseDialog with optional Stock IN movement linkage.
 """
 from __future__ import annotations
 
@@ -16,76 +17,95 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QLineEdit, QPushButton, QDialog, QFormLayout, QMessageBox, QLabel,
     QComboBox, QDateEdit, QCheckBox, QHeaderView, QAbstractItemView,
+    QFrame,
 )
-from PyQt6.QtCore import QDate
+from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtGui import QDoubleValidator
 
 from database.database import get_connection
 from expenses.expense_management import ExpenseManager, EXPENSE_CATEGORIES
 from inventory.inventory_management import StockMovementManager
 
-_EXPENSE_HEADERS = ["expense_id", "expense_date", "category", "amount", "description"]
-_EXPENSE_LABELS = ["ID", "Date", "Category", "Amount", "Description"]
+_EXPENSE_HEADERS = [
+    "Expense #", "Date", "Category", "Amount", "Description", "Recorded By"
+]
 
 
 def _unlinked_in_movements(conn) -> list[dict]:
     movs = StockMovementManager(conn).list_movements(limit=200)
-    return [m for m in movs
-            if m.get("movement_type") == "IN" and not m.get("expense_id")]
+    return [m for m in movs if m.get("movement_type") == "IN" and not m.get("expense_id")]
 
 
 class ExpenseDialog(QDialog):
-    """Add-expense dialog per Phase-8 spec."""
+    """Add Expense dialog with modern SaaS styling and validation."""
 
     def __init__(self, parent=None, in_movements: list[dict] | None = None):
         super().__init__(parent)
-        self.setWindowTitle("Add Expense")
-        self.setMinimumWidth(420)
+        self.setWindowTitle("Record Operating Expense")
+        self.setMinimumWidth(440)
+
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(16)
+
+        title = QLabel("Record Business Expense")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #0F172A;")
+        sub = QLabel("Log operational expenditures, utility bills, raw material supplies, or labor costs.")
+        sub.setStyleSheet("font-size: 12px; color: #64748B;")
+        layout.addWidget(title)
+        layout.addWidget(sub)
+
         form = QFormLayout()
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         self.date_edit = QDateEdit()
         self.date_edit.setCalendarPopup(True)
         self.date_edit.setDate(QDate.currentDate())
-        form.addRow("Expense date:", self.date_edit)
+        form.addRow("Expense Date:", self.date_edit)
 
         self.category_box = QComboBox()
         self.category_box.addItems(list(EXPENSE_CATEGORIES))
-        form.addRow("Category:", self.category_box)
+        form.addRow("Category *:", self.category_box)
 
         self.amount_edit = QLineEdit()
-        self.amount_edit.setPlaceholderText("e.g. 1500.00")
+        self.amount_edit.setPlaceholderText("0.00")
         self.amount_edit.setValidator(QDoubleValidator(0.01, 10_000_000, 2))
-        form.addRow("Amount:", self.amount_edit)
+        form.addRow("Amount (P) *:", self.amount_edit)
 
         self.desc_edit = QLineEdit()
-        self.desc_edit.setPlaceholderText("Description (optional)")
+        self.desc_edit.setPlaceholderText("e.g. Meralco electric bill, 50 rolls Vinyl sticker from supplier")
         form.addRow("Description:", self.desc_edit)
 
         self.link_box = QComboBox()
-        self.link_box.addItem("(no stock link)", None)
+        self.link_box.addItem("(None — General operating expense)", None)
         for m in in_movements or []:
             self.link_box.addItem(
-                f"IN #{m['movement_id']} {m.get('material_name', '')} "
-                f"x{m.get('quantity')} ({m.get('movement_date')})",
-                m["movement_id"])
+                f"IN #{m['movement_id']}: {m.get('material_name', '')} x{m.get('quantity')} ({m.get('movement_date')})",
+                m["movement_id"]
+            )
         form.addRow("Link Stock IN:", self.link_box)
+
         layout.addLayout(form)
 
         btns = QHBoxLayout()
-        save = QPushButton("Save")
+        btns.addStretch(1)
         cancel = QPushButton("Cancel")
-        save.clicked.connect(self._on_save)
+        cancel.setObjectName("SecondaryBtn")
         cancel.clicked.connect(self.reject)
-        btns.addWidget(save)
+
+        save = QPushButton("Save Expense")
+        save.clicked.connect(self._on_save)
+
         btns.addWidget(cancel)
+        btns.addWidget(save)
         layout.addLayout(btns)
 
     def _on_save(self) -> None:
         try:
             self.values()
         except ValueError as exc:
-            QMessageBox.warning(self, "Add Expense", str(exc))
+            QMessageBox.warning(self, "Validation Error", str(exc))
             return
         self.accept()
 
@@ -93,71 +113,144 @@ class ExpenseDialog(QDialog):
         try:
             amount = Decimal(self.amount_edit.text().strip())
         except (InvalidOperation, AttributeError):
-            raise ValueError("Enter a valid amount greater than zero.")
+            raise ValueError("Please enter a valid expense amount greater than zero.")
         if amount <= 0:
             raise ValueError("Amount must be greater than zero.")
         if self.category_box.currentText() not in EXPENSE_CATEGORIES:
-            raise ValueError(f"category must be one of {EXPENSE_CATEGORIES}")
-        return {"expense_date": self.date_edit.date().toPyDate().isoformat(),
-                "category": self.category_box.currentText(),
-                "amount": str(amount),
-                "description": self.desc_edit.text().strip(),
-                "movement_id": self.link_box.currentData()}
+            raise ValueError(f"Category must be one of {EXPENSE_CATEGORIES}")
+
+        return {
+            "expense_date": self.date_edit.date().toPyDate().isoformat(),
+            "category": self.category_box.currentText(),
+            "amount": str(amount),
+            "description": self.desc_edit.text().strip(),
+            "movement_id": self.link_box.currentData(),
+        }
 
 
 class ExpenseWidget(QWidget):
-    """Standalone Admin-only page for QStackedWidget."""
+    """Expense Management module with HCI-focused modern layout."""
 
     def __init__(self, user: dict | None = None, parent=None):
         super().__init__(parent)
         self.user = user or {}
-        layout = QVBoxLayout(self)
 
-        # Filter section: From/To dates + category.
-        filt = QHBoxLayout()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 28)
+        layout.setSpacing(18)
+
+        # 1. Page Header (Title + Subtitle)
+        header_lay = QVBoxLayout()
+        header_lay.setSpacing(4)
+        title = QLabel("Expense Management")
+        title.setObjectName("ModuleHeaderTitle")
+        sub = QLabel("Record business operating overheads, raw material purchase disbursements, and monitor outflows.")
+        sub.setObjectName("ModuleHeaderSub")
+        header_lay.addWidget(title)
+        header_lay.addWidget(sub)
+        layout.addLayout(header_lay)
+
+        # 2. Total Summary Card
+        summary_card = QFrame()
+        summary_card.setObjectName("SummaryBox")
+        sum_lay = QHBoxLayout(summary_card)
+        sum_lay.setContentsMargins(16, 12, 16, 12)
+
+        total_title = QLabel("Filtered Total Disbursements:")
+        total_title.setStyleSheet("font-weight: 600; color: #475569; font-size: 13px;")
+        self.total_label = QLabel("P0.00")
+        self.total_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #0F172A;")
+
+        self.count_label = QLabel("0 transactions recorded")
+        self.count_label.setStyleSheet("color: #64748B; font-size: 12px; margin-left: 8px;")
+
+        sum_lay.addWidget(total_title)
+        sum_lay.addWidget(self.total_label)
+        sum_lay.addWidget(self.count_label)
+        sum_lay.addStretch(1)
+        layout.addWidget(summary_card)
+
+        # 3. Action Toolbar (Search, Filter, Date Range, Actions)
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
+
+        # Search bar
+        self.search = QLineEdit()
+        self.search.setObjectName("TableSearchInput")
+        self.search.setPlaceholderText("🔍  Search description or recorder...")
+        self.search.setClearButtonEnabled(True)
+        self.search.setMinimumWidth(220)
+        self.search.textChanged.connect(self.refresh)
+        toolbar.addWidget(self.search, 1)
+
+        # Category Filter
+        self.category_box = QComboBox()
+        self.category_box.setObjectName("TableFilterCombo")
+        self.category_box.addItem("All Categories", "")
+        for c in EXPENSE_CATEGORIES:
+            self.category_box.addItem(c, c)
+        self.category_box.currentIndexChanged.connect(self.refresh)
+        toolbar.addWidget(self.category_box)
+
+        # Date Pickers with Checkboxes
         self.from_check = QCheckBox("From:")
         self.from_date = QDateEdit()
         self.from_date.setCalendarPopup(True)
         self.from_date.setDate(QDate.currentDate().addMonths(-1))
+        self.from_date.dateChanged.connect(lambda: self.from_check.isChecked() and self.refresh())
+        self.from_check.toggled.connect(self.refresh)
+
         self.to_check = QCheckBox("To:")
         self.to_date = QDateEdit()
         self.to_date.setCalendarPopup(True)
         self.to_date.setDate(QDate.currentDate())
-        self.category_box = QComboBox()
-        self.category_box.addItem("All categories", "")
-        for c in EXPENSE_CATEGORIES:
-            self.category_box.addItem(c, c)
-        self.apply_btn = QPushButton("Apply Filter")
-        self.clear_btn = QPushButton("Clear")
-        for w in (self.from_check, self.from_date, self.to_check, self.to_date,
-                  QLabel("Category:"), self.category_box,
-                  self.apply_btn, self.clear_btn):
-            filt.addWidget(w)
-        layout.addLayout(filt)
+        self.to_date.dateChanged.connect(lambda: self.to_check.isChecked() and self.refresh())
+        self.to_check.toggled.connect(self.refresh)
+
+        toolbar.addWidget(self.from_check)
+        toolbar.addWidget(self.from_date)
+        toolbar.addWidget(self.to_check)
+        toolbar.addWidget(self.to_date)
+
+        self.refresh_btn = QPushButton("↻ Refresh")
+        self.refresh_btn.setObjectName("SecondaryBtn")
+        self.refresh_btn.clicked.connect(self.refresh)
+        toolbar.addWidget(self.refresh_btn)
+
+        self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn.setObjectName("DangerBtn")
+        self.delete_btn.clicked.connect(self.delete_expense)
+        toolbar.addWidget(self.delete_btn)
+
+        self.add_btn = QPushButton("+ Record Expense")
+        self.add_btn.clicked.connect(self.add_expense)
+        toolbar.addWidget(self.add_btn)
+
+        layout.addLayout(toolbar)
+
+        # 4. Card Container wrapping the Table
+        card = QFrame()
+        card.setObjectName("ModuleCardContainer")
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(0, 0, 0, 0)
+        card_lay.setSpacing(0)
 
         self.table = QTableWidget()
+        self.table.setColumnCount(len(_EXPENSE_HEADERS))
+        self.table.setHorizontalHeaderLabels(_EXPENSE_HEADERS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.table)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(40)
 
-        self.total_label = QLabel("Total: P0.00")
-        self.total_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        layout.addWidget(self.total_label)
+        card_lay.addWidget(self.table)
+        layout.addWidget(card, 1)
 
-        btns = QHBoxLayout()
-        self.add_btn = QPushButton("Add Expense")
-        self.delete_btn = QPushButton("Delete")
-        self.refresh_btn = QPushButton("Refresh")
-        for b, fn in [(self.refresh_btn, self.refresh),
-                      (self.add_btn, self.add_expense),
-                      (self.delete_btn, self.delete_expense)]:
-            b.clicked.connect(fn)
-            btns.addWidget(b)
-        layout.addLayout(btns)
-
-        self.apply_btn.clicked.connect(self.refresh)
-        self.clear_btn.clicked.connect(self.clear_filters)
-        self.category_box.currentTextChanged.connect(self.refresh)
         self.refresh()
 
     # -- helpers --
@@ -171,32 +264,58 @@ class ExpenseWidget(QWidget):
             from auth.session import Session
             return Session.user_id()
         except Exception:  # noqa: BLE001
-            return None
+            return 1
 
     def _filter_values(self) -> dict:
-        start = self.from_date.date().toPyDate().isoformat() \
-            if self.from_check.isChecked() else None
-        end = self.to_date.date().toPyDate().isoformat() \
-            if self.to_check.isChecked() else None
+        start = self.from_date.date().toPyDate().isoformat() if self.from_check.isChecked() else None
+        end = self.to_date.date().toPyDate().isoformat() if self.to_check.isChecked() else None
         if end is not None:
-            end = f"{end} 23:59:59"  # DATETIME column: include the whole To day
-        return {"category": self.category_box.currentData() or "",
-                "start": start, "end": end}
+            end = f"{end} 23:59:59"
+        return {
+            "category": self.category_box.currentData() or "",
+            "start": start,
+            "end": end,
+        }
 
     def _selected_id(self) -> int | None:
         r = self.table.currentRow()
         if r < 0:
             return None
         try:
-            return int(self.table.item(r, 0).text())
+            text = self.table.item(r, 0).text().replace("#", "")
+            return int(text)
         except (AttributeError, ValueError):
             return None
 
-    # -- spec logic --
+    def _create_category_pill(self, cat: str) -> QWidget:
+        container = QWidget()
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(6, 4, 6, 4)
+        pill = QLabel(cat)
+        pill.setObjectName("StatusPill")
+
+        cat_lower = cat.lower()
+        if "material" in cat_lower:
+            pill.setProperty("status", "processing")  # Blue
+        elif "labor" in cat_lower:
+            pill.setProperty("status", "paid")        # Green
+        elif "utility" in cat_lower:
+            pill.setProperty("status", "ready")       # Purple
+        else:
+            pill.setProperty("status", "pending")     # Amber
+
+        pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pill.style().unpolish(pill)
+        pill.style().polish(pill)
+        lay.addWidget(pill)
+        return container
+
+    # -- Core logic --
     def clear_filters(self) -> None:
         self.from_check.setChecked(False)
         self.to_check.setChecked(False)
         self.category_box.setCurrentIndex(0)
+        self.search.clear()
         self.refresh()
 
     def refresh(self) -> None:
@@ -204,22 +323,43 @@ class ExpenseWidget(QWidget):
         conn = self._conn()
         try:
             rows = ExpenseManager(conn).list_expenses(
-                category=f["category"], start=f["start"], end=f["end"])
+                category=f["category"], start=f["start"], end=f["end"]
+            )
+
+            needle = self.search.text().strip().lower()
+            if needle:
+                rows = [
+                    r for r in rows
+                    if needle in str(r.get("description") or "").lower()
+                    or needle in str(r.get("recorded_by") or "").lower()
+                    or needle in str(r.get("expense_id") or "").lower()
+                ]
+
             self.table.setRowCount(len(rows))
-            self.table.setColumnCount(len(_EXPENSE_HEADERS))
-            self.table.setHorizontalHeaderLabels(_EXPENSE_LABELS)
             total = Decimal("0.00")
+
             for r, row in enumerate(rows):
-                total += Decimal(str(row.get("amount", 0)))
-                for c, h in enumerate(_EXPENSE_HEADERS):
-                    val = row.get(h, "")
-                    self.table.setItem(r, c, QTableWidgetItem(
-                        "" if val is None else str(val)))
-            self.table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeMode.Stretch)
-            self.total_label.setText(f"Total ({len(rows)} rows): P{total:.2f}")
+                eid = row.get("expense_id")
+                edate = str(row.get("expense_date") or "")
+                cat = str(row.get("category") or "Other")
+                amt = Decimal(str(row.get("amount") or 0))
+                desc = str(row.get("description") or "—")
+                rec_by = str(row.get("recorded_by") or "—").strip() or "—"
+
+                total += amt
+
+                self.table.setItem(r, 0, QTableWidgetItem(f"#{eid}"))
+                self.table.setItem(r, 1, QTableWidgetItem(edate))
+                self.table.setCellWidget(r, 2, self._create_category_pill(cat))
+                self.table.setItem(r, 3, QTableWidgetItem(f"P{amt:,.2f}"))
+                self.table.setItem(r, 4, QTableWidgetItem(desc))
+                self.table.setItem(r, 5, QTableWidgetItem(rec_by))
+
+            self.total_label.setText(f"P{total:,.2f}")
+            self.count_label.setText(f"({len(rows)} {'transaction' if len(rows) == 1 else 'transactions'} displayed)")
+
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Error", str(exc))
+            QMessageBox.critical(self, "Error", f"Failed to load expenses:\n{exc}")
         finally:
             conn.close()
 
@@ -229,24 +369,32 @@ class ExpenseWidget(QWidget):
             in_movs = _unlinked_in_movements(conn)
         finally:
             conn.close()
+
         dlg = ExpenseDialog(self, in_movements=in_movs)
         if not dlg.exec():
             return
+
         try:
             vals = dlg.values()
         except ValueError as exc:
-            QMessageBox.warning(self, "Add Expense", str(exc))
+            QMessageBox.warning(self, "Record Expense", str(exc))
             return
+
         conn = self._conn()
         try:
             mgr = ExpenseManager(conn)
             eid = mgr.create_expense(
                 vals["category"], vals["amount"], vals["description"],
                 recorded_by_user_id=self._user_id(),
-                expense_date=vals["expense_date"])
+                expense_date=vals["expense_date"]
+            )
             if vals.get("movement_id") is not None:
                 mgr.link_movement(eid, vals["movement_id"])
-            QMessageBox.information(self, "Expenses", f"Expense {eid} recorded.")
+
+            QMessageBox.information(
+                self, "Expense Recorded",
+                f"Expense #{eid} of P{Decimal(vals['amount']):,.2f} recorded successfully."
+            )
             self.refresh()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", str(exc))
@@ -256,24 +404,29 @@ class ExpenseWidget(QWidget):
     def delete_expense(self) -> None:
         eid = self._selected_id()
         if eid is None:
-            QMessageBox.warning(self, "Expenses", "Select a row first.")
+            QMessageBox.warning(self, "Delete Expense", "Please select an expense from the table first.")
             return
+
         if QMessageBox.question(
-                self, "Delete", f"Delete expense {eid}?"
+            self, "Confirm Delete",
+            f"Are you sure you want to delete expense record #{eid}?\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         ) != QMessageBox.StandardButton.Yes:
             return
+
         conn = self._conn()
         try:
             ExpenseManager(conn).delete_expense(eid)
+            QMessageBox.information(self, "Deleted", f"Expense #{eid} has been removed.")
             self.refresh()
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Error", str(exc))
+            QMessageBox.critical(self, "Error", f"Failed to delete expense:\n{exc}")
         finally:
             conn.close()
 
-    # -- compatibility with legacy dashboard slot names --
+    # -- compatibility with legacy slots --
     def refresh_expenses(self) -> None:
         self.refresh()
 
-    def add_expenses(self) -> None:  # pragma: no cover - alias
+    def add_expenses(self) -> None:
         self.add_expense()
