@@ -74,6 +74,7 @@ class KpiCard(QFrame):
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         top.addWidget(self.title_label, 1)
 
+        self._icon_theme = icon_theme
         self.icon_label = QLabel()
         self.icon_label.setObjectName("KpiIconBadge")
         self.icon_label.setProperty("theme", icon_theme)
@@ -102,9 +103,9 @@ class KpiCard(QFrame):
 
     # -- Content setters & getters -------------------------------------
     def set_icon(self, icon: str | QIcon | QPixmap | QStyle.StandardPixmap | None) -> None:
-        """Set the top-row icon from a standard Qt icon, QPixmap, file path, or text/emoji."""
+        """Set the top-row icon from a vector SVG, standard Qt icon, QPixmap, or file path."""
         if icon is None:
-            self.icon_label.setText("●")
+            self.icon_label.setText("")
             return
 
         if isinstance(icon, QStyle.StandardPixmap):
@@ -124,6 +125,19 @@ class KpiCard(QFrame):
             return
 
         if isinstance(icon, str):
+            from ui.icons import SVG_PATHS, get_pixmap
+            if icon in SVG_PATHS:
+                theme_colors = {
+                    "gold": "#B45309",
+                    "coral": "#DC2626",
+                    "blue": "#2563EB",
+                    "amber": "#D97706",
+                    "emerald": "#16A34A",
+                }
+                theme = getattr(self, "_icon_theme", "gold")
+                color = theme_colors.get(theme, "#B45309")
+                self.icon_label.setPixmap(get_pixmap(icon, color=color, size=18))
+                return
             p = Path(icon)
             if p.is_file():
                 self.icon_label.setPixmap(
@@ -181,13 +195,13 @@ if __name__ == "__main__":
     cards_layout = QHBoxLayout()
     cards_layout.setSpacing(14)
 
-    card1 = KpiCard("Total Sales", icon="💰", value="P1,100.00",
+    card1 = KpiCard("Total Sales", icon="trending-up", value="P1,100.00",
                     subtitle="+5% vs last month", subtitle_tone=TONE_POSITIVE, icon_theme="gold")
-    card2 = KpiCard("Total Expenses", icon="💸", value="P2,550.00",
+    card2 = KpiCard("Total Expenses", icon="expenses", value="P2,550.00",
                     subtitle="+15% vs last month", subtitle_tone=TONE_POSITIVE, icon_theme="coral")
-    card3 = KpiCard("Pending Orders", icon="📋", value="0",
+    card3 = KpiCard("Pending Orders", icon="clock", value="0",
                     subtitle="All caught up!", subtitle_tone=TONE_NEUTRAL, icon_theme="blue")
-    card4 = KpiCard("Low Stock Items", icon="📦", value="0",
+    card4 = KpiCard("Low Stock Items", icon="inventory", value="0",
                     subtitle="Inventory healthy", subtitle_tone=TONE_NEUTRAL, icon_theme="amber")
 
     cards_layout.addWidget(card1)

@@ -27,6 +27,7 @@ from sales_orders.sales_order_management import (
     OrderManager, ORDER_TYPES, ORDER_STATUSES,
     DESIGN_ASSURANCE_DEDUCTION, compute_totals,
 )
+from ui.icons import get_icon, get_action_icon
 
 _ORDER_HEADERS = ["Order #", "Customer Name", "Order Type", "Order Date", "Total Amount", "Status"]
 _ITEM_COLS = ["Packaging / Product Type", "Size / Spec", "Quantity", "Unit Price (P)", "Discount (P)"]
@@ -102,10 +103,12 @@ class NewOrderDialog(QDialog):
         items_layout.addWidget(self.items_table)
 
         row_btns = QHBoxLayout()
-        add_btn = QPushButton("+ Add Item")
+        add_btn = QPushButton("Add Item")
         add_btn.setObjectName("SecondaryBtn")
-        remove_btn = QPushButton("- Remove Selected")
+        add_btn.setIcon(get_action_icon("plus", "secondary", 14))
+        remove_btn = QPushButton("Remove Selected")
         remove_btn.setObjectName("SecondaryBtn")
+        remove_btn.setIcon(get_action_icon("trash", "secondary", 14))
         add_btn.clicked.connect(self.add_item_row)
         remove_btn.clicked.connect(self.remove_item_row)
         row_btns.addWidget(add_btn)
@@ -160,6 +163,7 @@ class NewOrderDialog(QDialog):
         cancel.setObjectName("SecondaryBtn")
         cancel.clicked.connect(self.reject)
         save = QPushButton("Save Order")
+        save.setIcon(get_action_icon("check", "primary", 15))
         save.clicked.connect(self._on_save)
         btns.addWidget(cancel)
         btns.addWidget(save)
@@ -318,7 +322,8 @@ class OrderDetailsDialog(QDialog):
 
         # Action Buttons
         btns = QHBoxLayout()
-        inv_btn = QPushButton("📄 Download PDF Invoice")
+        inv_btn = QPushButton("Download PDF Invoice")
+        inv_btn.setIcon(get_action_icon("download", "primary", 15))
         inv_btn.clicked.connect(self._invoice)
         close_btn = QPushButton("Close")
         close_btn.setObjectName("SecondaryBtn")
@@ -371,7 +376,8 @@ class OrderWidget(QWidget):
 
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
-        self.search.setPlaceholderText("🔍  Search by order # or customer name...")
+        self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.setPlaceholderText("Search by order # or customer name...")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.refresh)
         toolbar.addWidget(self.search, 1)
@@ -382,27 +388,32 @@ class OrderWidget(QWidget):
         self.status_box.currentTextChanged.connect(self.refresh)
         toolbar.addWidget(self.status_box)
 
-        self.refresh_btn = QPushButton("↻ Refresh")
+        self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setObjectName("SecondaryBtn")
+        self.refresh_btn.setIcon(get_action_icon("refresh", "secondary", 15))
         self.refresh_btn.clicked.connect(self.refresh)
         toolbar.addWidget(self.refresh_btn)
 
-        self.view_btn = QPushButton("👁️ Details")
+        self.view_btn = QPushButton("Details")
         self.view_btn.setObjectName("SecondaryBtn")
+        self.view_btn.setIcon(get_action_icon("eye", "secondary", 15))
         self.view_btn.clicked.connect(self.view_details)
         toolbar.addWidget(self.view_btn)
 
-        self.status_btn = QPushButton("🔄 Status")
+        self.status_btn = QPushButton("Status")
         self.status_btn.setObjectName("SecondaryBtn")
+        self.status_btn.setIcon(get_action_icon("check-circle", "secondary", 15))
         self.status_btn.clicked.connect(self.update_status)
         toolbar.addWidget(self.status_btn)
 
-        self.invoice_btn = QPushButton("📄 Invoice")
+        self.invoice_btn = QPushButton("Invoice")
         self.invoice_btn.setObjectName("SecondaryBtn")
+        self.invoice_btn.setIcon(get_action_icon("file-text", "secondary", 15))
         self.invoice_btn.clicked.connect(self.generate_invoice)
         toolbar.addWidget(self.invoice_btn)
 
-        self.new_btn = QPushButton("+ New Order")
+        self.new_btn = QPushButton("New Order")
+        self.new_btn.setIcon(get_action_icon("plus", "primary", 16))
         self.new_btn.clicked.connect(self.new_order)
         toolbar.addWidget(self.new_btn)
 

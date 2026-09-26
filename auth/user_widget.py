@@ -19,6 +19,7 @@ from PyQt6.QtCore import Qt
 
 from auth.user_management import UserManager, ALLOWED_ROLES
 from database.database import get_connection
+from ui.icons import get_icon, get_action_icon
 
 _USER_HEADERS = [
     "User #", "Username", "Full Name", "System Role", "Status", "Date Registered"
@@ -86,6 +87,7 @@ class UserDialog(QDialog):
         cancel.clicked.connect(self.reject)
 
         save = QPushButton("Save User Profile")
+        save.setIcon(get_action_icon("check", "primary", 15))
         save.clicked.connect(self._on_save)
 
         btns.addWidget(cancel)
@@ -158,6 +160,7 @@ class ResetPasswordDialog(QDialog):
         cancel.clicked.connect(self.reject)
 
         save = QPushButton("Update Password")
+        save.setIcon(get_action_icon("key", "primary", 15))
         save.clicked.connect(self._on_save)
 
         btns.addWidget(cancel)
@@ -207,7 +210,8 @@ class UserWidget(QWidget):
 
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
-        self.search.setPlaceholderText("🔍  Search users by username or full name...")
+        self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.setPlaceholderText("Search users by username or full name...")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.refresh)
         toolbar.addWidget(self.search, 1)
@@ -228,27 +232,32 @@ class UserWidget(QWidget):
         self.status_filter.currentIndexChanged.connect(self.refresh)
         toolbar.addWidget(self.status_filter)
 
-        self.refresh_btn = QPushButton("↻ Refresh")
+        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.setIcon(get_action_icon("refresh", "secondary", 15))
         self.refresh_btn.setObjectName("SecondaryBtn")
         self.refresh_btn.clicked.connect(self.refresh)
         toolbar.addWidget(self.refresh_btn)
 
-        self.pw_btn = QPushButton("🔑 Reset Password")
+        self.pw_btn = QPushButton("Reset Password")
+        self.pw_btn.setIcon(get_action_icon("key", "secondary", 15))
         self.pw_btn.setObjectName("SecondaryBtn")
         self.pw_btn.clicked.connect(self.reset_password)
         toolbar.addWidget(self.pw_btn)
 
-        self.toggle_btn = QPushButton("⚡ Toggle Active")
+        self.toggle_btn = QPushButton("Toggle Active")
+        self.toggle_btn.setIcon(get_action_icon("shield-check", "secondary", 15))
         self.toggle_btn.setObjectName("SecondaryBtn")
         self.toggle_btn.clicked.connect(self.toggle_user)
         toolbar.addWidget(self.toggle_btn)
 
-        self.edit_btn = QPushButton("✏️ Edit Profile")
+        self.edit_btn = QPushButton("Edit Profile")
+        self.edit_btn.setIcon(get_action_icon("edit", "secondary", 15))
         self.edit_btn.setObjectName("SecondaryBtn")
         self.edit_btn.clicked.connect(self.edit_user)
         toolbar.addWidget(self.edit_btn)
 
-        self.add_btn = QPushButton("+ Add User")
+        self.add_btn = QPushButton("Add User")
+        self.add_btn.setIcon(get_action_icon("user-plus", "primary", 16))
         self.add_btn.clicked.connect(self.add_user)
         toolbar.addWidget(self.add_btn)
 
@@ -269,8 +278,10 @@ class UserWidget(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(3, 115)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(4, 115)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.doubleClicked.connect(self.edit_user)
@@ -316,7 +327,7 @@ class UserWidget(QWidget):
         container = QWidget()
         lay = QHBoxLayout(container)
         lay.setContentsMargins(6, 4, 6, 4)
-        pill = QLabel("Active" if is_active else "Inactive")
+        pill = QLabel("● Active" if is_active else "● Inactive")
         pill.setObjectName("StatusPill")
         pill.setProperty("status", "paid" if is_active else "cancelled")
         pill.setAlignment(Qt.AlignmentFlag.AlignCenter)

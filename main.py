@@ -71,7 +71,9 @@ def main() -> int:
         app.exec()
 
         # X-close exits; Logout returns to the login prompt.
-        if not getattr(window, "logout_requested", False):
+        is_logout = getattr(window, "logout_requested", False)
+        window.deleteLater()
+        if not is_logout:
             Session.clear()
             return 0
         # else: loop back to LoginWindow

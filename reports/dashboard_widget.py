@@ -34,6 +34,7 @@ from PyQt6.QtGui import QPainter, QColor, QFont
 
 from database.database import get_connection
 from reports.reports import ReportManager
+from ui.icons import get_icon, get_pixmap
 from ui.kpi_card import (
     KpiCard, TONE_NEGATIVE, TONE_NEUTRAL, TONE_POSITIVE,
 )
@@ -148,8 +149,9 @@ class DashboardWidget(QWidget):
         self.date_filter.currentIndexChanged.connect(lambda _i: self.refresh())
         right_box.addWidget(self.date_filter)
 
-        refresh_btn = QPushButton("↻ Refresh")
+        refresh_btn = QPushButton(" Refresh")
         refresh_btn.setObjectName("DashboardRefreshBtn")
+        refresh_btn.setIcon(get_icon("refresh", color="#475569", size=15))
         refresh_btn.clicked.connect(self.refresh)
         right_box.addWidget(refresh_btn)
 
@@ -164,12 +166,12 @@ class DashboardWidget(QWidget):
 
         # 4 Specific Cards: key, title, icon, default_value, default_subtitle, tone, theme
         defs = ([
-            ("sales", "Total Sales", "💰", "P1,100.00", "+5% vs last month", TONE_POSITIVE, "gold"),
-            ("expenses", "Total Expenses", "💸", "P2,550.00", "+15% vs last month", TONE_POSITIVE, "coral"),
-            ("pending", "Pending Orders", "📋", "0", "All caught up!", TONE_NEUTRAL, "blue"),
-            ("low", "Low Stock Items", "📦", "0", "Inventory healthy", TONE_NEUTRAL, "amber"),
+            ("sales", "Total Sales", "trending-up", "P1,100.00", "+5% vs last month", TONE_POSITIVE, "gold"),
+            ("expenses", "Total Expenses", "expenses", "P2,550.00", "+15% vs last month", TONE_POSITIVE, "coral"),
+            ("pending", "Pending Orders", "clock", "0", "All caught up!", TONE_NEUTRAL, "blue"),
+            ("low", "Low Stock Items", "inventory", "0", "Inventory healthy", TONE_NEUTRAL, "amber"),
         ] if self._is_admin else [
-            ("low", "Low Stock Items", "📦", "0", "Inventory healthy", TONE_NEUTRAL, "amber"),
+            ("low", "Low Stock Items", "inventory", "0", "Inventory healthy", TONE_NEUTRAL, "amber"),
         ])
 
         for i, (key, title, icon, def_val, def_sub, def_tone, theme) in enumerate(defs):
@@ -192,7 +194,7 @@ class DashboardWidget(QWidget):
         grid.setSpacing(18)
 
         # Panel 1 (Top-Left): Revenue vs Expenses
-        self.panel_revenue = self._create_panel("Revenue vs Expenses", "Reports", "View full report ›")
+        self.panel_revenue = self._create_panel("Revenue vs Expenses", "Reports", "View full report")
         chart_lay1 = QVBoxLayout(self.panel_revenue["body"])
         chart_lay1.setContentsMargins(12, 8, 12, 8)
         self.bar_view = QChartView()
@@ -203,7 +205,7 @@ class DashboardWidget(QWidget):
         grid.addWidget(self.panel_revenue["frame"], 0, 0)
 
         # Panel 2 (Top-Right): Expense Breakdown
-        self.panel_expenses = self._create_panel("Expense Breakdown (This Month)", "Expenses", "View details ›")
+        self.panel_expenses = self._create_panel("Expense Breakdown (This Month)", "Expenses", "View details")
         chart_lay2 = QVBoxLayout(self.panel_expenses["body"])
         chart_lay2.setContentsMargins(12, 8, 12, 8)
         self.pie_view = QChartView()
@@ -214,7 +216,7 @@ class DashboardWidget(QWidget):
         grid.addWidget(self.panel_expenses["frame"], 0, 1)
 
         # Panel 3 (Bottom-Left): Orders to Deliver
-        self.panel_orders = self._create_panel("Recent Orders to Deliver", "Orders", "View all orders ›")
+        self.panel_orders = self._create_panel("Recent Orders to Deliver", "Orders", "View all orders")
         orders_lay = QVBoxLayout(self.panel_orders["body"])
         orders_lay.setContentsMargins(16, 8, 16, 16)
         self.orders_list_layout = QVBoxLayout()
@@ -224,7 +226,7 @@ class DashboardWidget(QWidget):
         grid.addWidget(self.panel_orders["frame"], 1, 0)
 
         # Panel 4 (Bottom-Right): Inventory Status & Alerts
-        self.panel_inventory = self._create_panel("Inventory Status & Low Stock", "Inventory", "Manage stock ›")
+        self.panel_inventory = self._create_panel("Inventory Status & Low Stock", "Inventory", "Manage stock")
         inv_lay = QVBoxLayout(self.panel_inventory["body"])
         inv_lay.setContentsMargins(16, 8, 16, 16)
         self.inv_list_layout = QVBoxLayout()
@@ -240,7 +242,7 @@ class DashboardWidget(QWidget):
         grid.setSpacing(18)
 
         # Staff gets focused inventory status panel
-        self.panel_inventory = self._create_panel("Inventory Status & Low Stock", "Inventory", "Manage stock ›")
+        self.panel_inventory = self._create_panel("Inventory Status & Low Stock", "Inventory", "Manage stock")
         inv_lay = QVBoxLayout(self.panel_inventory["body"])
         inv_lay.setContentsMargins(16, 8, 16, 16)
         self.inv_list_layout = QVBoxLayout()
@@ -271,6 +273,8 @@ class DashboardWidget(QWidget):
 
         link_btn = QPushButton(link_label)
         link_btn.setObjectName("PanelLinkBtn")
+        link_btn.setIcon(get_icon("arrow-right", color="#B45309", size=13))
+        link_btn.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         link_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         link_btn.clicked.connect(lambda: self.navigation_requested.emit(nav_target))
         header.addWidget(link_btn)
@@ -528,11 +532,12 @@ class DashboardWidget(QWidget):
             row_lay.setContentsMargins(12, 10, 12, 10)
             row_lay.setSpacing(12)
 
-            # Left icon chip (delivery truck / box icon)
-            icon_badge = QLabel("📦")
+            # Left icon chip (delivery order icon)
+            icon_badge = QLabel()
             icon_badge.setObjectName("OrderBadgeIcon")
             icon_badge.setFixedSize(36, 36)
             icon_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_badge.setPixmap(get_pixmap("orders", color="#2563EB", size=18))
             row_lay.addWidget(icon_badge)
 
             # Center: Order # and Customer
@@ -595,11 +600,14 @@ class DashboardWidget(QWidget):
 
             is_low = bool(m.get("is_low"))
             # Left icon chip
-            icon_badge = QLabel("⚠️" if is_low else "🏷️")
+            icon_badge = QLabel()
             icon_badge.setObjectName("MaterialBadgeIcon")
             icon_badge.setProperty("alert", "true" if is_low else "false")
             icon_badge.setFixedSize(36, 36)
             icon_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge_col = "#DC2626" if is_low else "#16A34A"
+            badge_ic = "alert-triangle" if is_low else "inventory"
+            icon_badge.setPixmap(get_pixmap(badge_ic, color=badge_col, size=18))
             row_lay.addWidget(icon_badge)
 
             # Center: Material name & Unit

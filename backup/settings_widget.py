@@ -19,6 +19,7 @@ from PyQt6.QtCore import Qt
 from backup.backup_restore import BackupManager
 from backup.system_log import SystemLogManager
 from database.database import get_connection
+from ui.icons import get_icon, get_action_icon, get_pixmap
 
 _LOG_HEADERS = ["Log #", "Action", "User", "Details / File Path", "Timestamp"]
 
@@ -62,10 +63,11 @@ class SettingsWidget(QWidget):
         b_lay.setSpacing(10)
 
         b_top = QHBoxLayout()
-        b_icon = QLabel("💾")
-        b_icon.setStyleSheet(
-            "font-size: 20px; background: #FEF3C7; border-radius: 8px; padding: 6px 8px;"
-        )
+        b_icon = QLabel()
+        b_icon.setFixedSize(36, 36)
+        b_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        b_icon.setStyleSheet("background: #FEF3C7; border-radius: 8px;")
+        b_icon.setPixmap(get_pixmap("backup", color="#B45309", size=18))
         b_top.addWidget(b_icon)
         b_title = QLabel("Create Database Backup")
         b_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #0F172A;")
@@ -83,7 +85,8 @@ class SettingsWidget(QWidget):
 
         b_btn_box = QHBoxLayout()
         b_btn_box.addStretch(1)
-        self.backup_btn = QPushButton("💾 Backup Database Now")
+        self.backup_btn = QPushButton("Backup Database Now")
+        self.backup_btn.setIcon(get_action_icon("download", "primary", 15))
         self.backup_btn.clicked.connect(self.backup_database)
         b_btn_box.addWidget(self.backup_btn)
         b_lay.addLayout(b_btn_box)
@@ -101,10 +104,11 @@ class SettingsWidget(QWidget):
         r_lay.setSpacing(10)
 
         r_top = QHBoxLayout()
-        r_icon = QLabel("🔄")
-        r_icon.setStyleSheet(
-            "font-size: 20px; background: #FEE2E2; border-radius: 8px; padding: 6px 8px;"
-        )
+        r_icon = QLabel()
+        r_icon.setFixedSize(36, 36)
+        r_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        r_icon.setStyleSheet("background: #FEE2E2; border-radius: 8px;")
+        r_icon.setPixmap(get_pixmap("upload-cloud", color="#DC2626", size=18))
         r_top.addWidget(r_icon)
         r_title = QLabel("Restore from Backup")
         r_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #0F172A;")
@@ -122,9 +126,10 @@ class SettingsWidget(QWidget):
 
         r_btn_box = QHBoxLayout()
         r_btn_box.addStretch(1)
-        self.restore_btn = QPushButton("⚠️ Select Backup File to Restore")
+        self.restore_btn = QPushButton("Select Backup File to Restore")
         self.restore_btn.setObjectName("SecondaryBtn")
         self.restore_btn.setStyleSheet("border-color: #FCA5A5; color: #DC2626;")
+        self.restore_btn.setIcon(get_action_icon("upload-cloud", "danger", 15))
         self.restore_btn.clicked.connect(self.restore_database)
         r_btn_box.addWidget(self.restore_btn)
         r_lay.addLayout(r_btn_box)
@@ -149,14 +154,16 @@ class SettingsWidget(QWidget):
 
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
-        self.search.setPlaceholderText("🔍  Search audit log by action, user, or details...")
+        self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.setPlaceholderText("Search audit log by action, user, or details...")
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(240)
         self.search.textChanged.connect(self.refresh_log)
         toolbar.addWidget(self.search, 1)
 
-        self.refresh_btn = QPushButton("↻ Refresh Log")
+        self.refresh_btn = QPushButton("Refresh Log")
         self.refresh_btn.setObjectName("SecondaryBtn")
+        self.refresh_btn.setIcon(get_action_icon("refresh", "secondary", 15))
         self.refresh_btn.clicked.connect(self.refresh_log)
         toolbar.addWidget(self.refresh_btn)
 
@@ -177,7 +184,8 @@ class SettingsWidget(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 110)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
@@ -250,7 +258,7 @@ class SettingsWidget(QWidget):
         if QMessageBox.question(
             self, "Confirm Database Restore",
             f"Are you sure you want to restore from:\n{path}\n\n"
-            "⚠️ This action will overwrite existing records with data from the backup file!",
+            "Warning: This action will overwrite existing operational records with data from the backup file!",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         ) != QMessageBox.StandardButton.Yes:
             return

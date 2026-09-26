@@ -25,6 +25,7 @@ from PyQt6.QtGui import QDoubleValidator
 from database.database import get_connection
 from expenses.expense_management import ExpenseManager, EXPENSE_CATEGORIES
 from inventory.inventory_management import StockMovementManager
+from ui.icons import get_icon, get_action_icon
 
 _EXPENSE_HEADERS = [
     "Expense #", "Date", "Category", "Amount", "Description", "Recorded By"
@@ -95,6 +96,7 @@ class ExpenseDialog(QDialog):
         cancel.clicked.connect(self.reject)
 
         save = QPushButton("Save Expense")
+        save.setIcon(get_action_icon("check", "primary", 15))
         save.clicked.connect(self._on_save)
 
         btns.addWidget(cancel)
@@ -177,7 +179,8 @@ class ExpenseWidget(QWidget):
         # Search bar
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
-        self.search.setPlaceholderText("🔍  Search description or recorder...")
+        self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.setPlaceholderText("Search description or recorder...")
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(220)
         self.search.textChanged.connect(self.refresh)
@@ -212,17 +215,20 @@ class ExpenseWidget(QWidget):
         toolbar.addWidget(self.to_check)
         toolbar.addWidget(self.to_date)
 
-        self.refresh_btn = QPushButton("↻ Refresh")
+        self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setObjectName("SecondaryBtn")
+        self.refresh_btn.setIcon(get_action_icon("refresh", "secondary", 15))
         self.refresh_btn.clicked.connect(self.refresh)
         toolbar.addWidget(self.refresh_btn)
 
-        self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn = QPushButton("Delete")
         self.delete_btn.setObjectName("DangerBtn")
+        self.delete_btn.setIcon(get_action_icon("trash", "danger", 15))
         self.delete_btn.clicked.connect(self.delete_expense)
         toolbar.addWidget(self.delete_btn)
 
-        self.add_btn = QPushButton("+ Record Expense")
+        self.add_btn = QPushButton("Record Expense")
+        self.add_btn.setIcon(get_action_icon("plus", "primary", 16))
         self.add_btn.clicked.connect(self.add_expense)
         toolbar.addWidget(self.add_btn)
 

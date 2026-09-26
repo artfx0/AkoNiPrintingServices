@@ -9,7 +9,7 @@ Features:
   - Top summary cards: Total Items Tracked, Low Stock Alerts, and Total Movements.
   - Tabbed interface separating Material Stock List and Stock Movement Audit Log.
   - Live search and Low Stock filter.
-  - Stock level pills: '✓ In Stock' (green) vs '⚠️ Low Stock' (red).
+  - Stock level pills: '● In Stock' (emerald) vs '● Low Stock' (amber).
   - Modernized MaterialDialog and StockMovementDialog.
 """
 from __future__ import annotations
@@ -28,6 +28,7 @@ from database.database import get_connection
 from inventory.inventory_management import (
     MaterialManager, StockMovementManager, MOVEMENT_TYPES,
 )
+from ui.icons import get_icon, get_action_icon, get_pixmap
 
 _MATERIAL_HEADERS = [
     "ID", "Material Name", "Unit", "On Hand",
@@ -99,6 +100,7 @@ class MaterialDialog(QDialog):
         cancel.clicked.connect(self.reject)
 
         save = QPushButton("Save Material")
+        save.setIcon(get_action_icon("check", "primary", 15))
         save.clicked.connect(self._on_save)
 
         btns.addWidget(cancel)
@@ -185,6 +187,7 @@ class StockMovementDialog(QDialog):
         cancel.clicked.connect(self.reject)
 
         save = QPushButton("Save Movement")
+        save.setIcon(get_action_icon("check", "primary", 15))
         save.clicked.connect(self._on_save)
 
         btns.addWidget(cancel)
@@ -246,17 +249,33 @@ class InventoryWidget(QWidget):
         self.stat_bar = QHBoxLayout()
         self.stat_bar.setSpacing(14)
 
-        self.total_chip = QLabel("📦 0 Items Tracked")
+        self.total_chip = QFrame()
         self.total_chip.setStyleSheet(
-            "background: #F1F5F9; color: #334155; font-size: 12px; font-weight: 600; "
-            "padding: 6px 12px; border-radius: 8px; border: 1px solid #E2E8F0;"
+            "background: #F1F5F9; border-radius: 8px; border: 1px solid #E2E8F0;"
         )
+        tc_lay = QHBoxLayout(self.total_chip)
+        tc_lay.setContentsMargins(10, 6, 12, 6)
+        tc_lay.setSpacing(8)
+        self.total_chip_icon = QLabel()
+        self.total_chip_icon.setPixmap(get_pixmap("inventory", color="#475569", size=15))
+        self.total_chip_text = QLabel("0 Materials Tracked")
+        self.total_chip_text.setStyleSheet("color: #334155; font-size: 12px; font-weight: 600;")
+        tc_lay.addWidget(self.total_chip_icon)
+        tc_lay.addWidget(self.total_chip_text)
 
-        self.low_stock_chip = QLabel("✓ Stock Levels Healthy")
+        self.low_stock_chip = QFrame()
         self.low_stock_chip.setStyleSheet(
-            "background: #DCFCE7; color: #15803D; font-size: 12px; font-weight: 600; "
-            "padding: 6px 12px; border-radius: 8px; border: 1px solid #BBF7D0;"
+            "background: #DCFCE7; border-radius: 8px; border: 1px solid #BBF7D0;"
         )
+        lc_lay = QHBoxLayout(self.low_stock_chip)
+        lc_lay.setContentsMargins(10, 6, 12, 6)
+        lc_lay.setSpacing(8)
+        self.low_stock_chip_icon = QLabel()
+        self.low_stock_chip_icon.setPixmap(get_pixmap("check-circle", color="#15803D", size=15))
+        self.low_stock_chip_text = QLabel("Stock Levels Healthy")
+        self.low_stock_chip_text.setStyleSheet("color: #15803D; font-size: 12px; font-weight: 600;")
+        lc_lay.addWidget(self.low_stock_chip_icon)
+        lc_lay.addWidget(self.low_stock_chip_text)
 
         self.stat_bar.addWidget(self.total_chip)
         self.stat_bar.addWidget(self.low_stock_chip)
@@ -269,11 +288,13 @@ class InventoryWidget(QWidget):
 
         # Tab 1: Materials
         self.materials_tab = self._build_materials_tab()
-        self.tabs.addTab(self.materials_tab, "📦 Material Stock List")
+        self.tabs.addTab(self.materials_tab, "Material Stock List")
+        self.tabs.setTabIcon(0, get_icon("inventory", color="#475569", size=16))
 
         # Tab 2: Movements
         self.movements_tab = self._build_movements_tab()
-        self.tabs.addTab(self.movements_tab, "📋 Stock Movement Audit Log")
+        self.tabs.addTab(self.movements_tab, "Stock Movement Audit Log")
+        self.tabs.setTabIcon(1, get_icon("clipboard-list", color="#475569", size=16))
 
         layout.addWidget(self.tabs, 1)
 
@@ -291,7 +312,8 @@ class InventoryWidget(QWidget):
 
         self.mat_search = QLineEdit()
         self.mat_search.setObjectName("TableSearchInput")
-        self.mat_search.setPlaceholderText("🔍  Search materials by name or unit...")
+        self.mat_search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.mat_search.setPlaceholderText("Search materials by name or unit...")
         self.mat_search.setClearButtonEnabled(True)
         self.mat_search.setMinimumWidth(240)
         self.mat_search.textChanged.connect(self.refresh_materials_table)
@@ -300,42 +322,49 @@ class InventoryWidget(QWidget):
         self.stock_filter = QComboBox()
         self.stock_filter.setObjectName("TableFilterCombo")
         self.stock_filter.addItem("All Stock Levels", "ALL")
-        self.stock_filter.addItem("⚠️ Low Stock Only", "LOW")
+        self.stock_filter.addItem("Low Stock Only", "LOW")
         self.stock_filter.currentIndexChanged.connect(self.refresh_materials_table)
         toolbar.addWidget(self.stock_filter)
 
-        self.mat_refresh_btn = QPushButton("↻ Refresh")
+        self.mat_refresh_btn = QPushButton("Refresh")
         self.mat_refresh_btn.setObjectName("SecondaryBtn")
+        self.mat_refresh_btn.setIcon(get_action_icon("refresh", "secondary", 15))
         self.mat_refresh_btn.clicked.connect(self.refresh)
         toolbar.addWidget(self.mat_refresh_btn)
 
-        self.in_btn = QPushButton("📥 Stock In")
+        self.in_btn = QPushButton("Stock In")
         self.in_btn.setObjectName("SecondaryBtn")
+        self.in_btn.setIcon(get_action_icon("stock-in", "secondary", 15))
         self.in_btn.clicked.connect(lambda: self.stock_move("IN"))
         toolbar.addWidget(self.in_btn)
 
-        self.out_btn = QPushButton("📤 Stock Out")
+        self.out_btn = QPushButton("Stock Out")
         self.out_btn.setObjectName("SecondaryBtn")
+        self.out_btn.setIcon(get_action_icon("stock-out", "secondary", 15))
         self.out_btn.clicked.connect(lambda: self.stock_move("OUT"))
         toolbar.addWidget(self.out_btn)
 
         if self._is_admin:
-            self.adj_btn = QPushButton("⚖️ Adjust")
+            self.adj_btn = QPushButton("Adjust")
             self.adj_btn.setObjectName("SecondaryBtn")
+            self.adj_btn.setIcon(get_action_icon("adjust", "secondary", 15))
             self.adj_btn.clicked.connect(lambda: self.stock_move("ADJUSTMENT"))
             toolbar.addWidget(self.adj_btn)
 
-            self.edit_btn = QPushButton("✏️ Edit")
+            self.edit_btn = QPushButton("Edit")
             self.edit_btn.setObjectName("SecondaryBtn")
+            self.edit_btn.setIcon(get_action_icon("edit", "secondary", 15))
             self.edit_btn.clicked.connect(self.edit_material)
             toolbar.addWidget(self.edit_btn)
 
-            self.delete_btn = QPushButton("🗑️ Delete")
+            self.delete_btn = QPushButton("Delete")
             self.delete_btn.setObjectName("DangerBtn")
+            self.delete_btn.setIcon(get_action_icon("trash", "danger", 15))
             self.delete_btn.clicked.connect(self.delete_material)
             toolbar.addWidget(self.delete_btn)
 
-            self.add_btn = QPushButton("+ Add Material")
+            self.add_btn = QPushButton("Add Material")
+            self.add_btn.setIcon(get_action_icon("plus", "primary", 16))
             self.add_btn.clicked.connect(self.add_material)
             toolbar.addWidget(self.add_btn)
 
@@ -377,7 +406,8 @@ class InventoryWidget(QWidget):
 
         self.mov_search = QLineEdit()
         self.mov_search.setObjectName("TableSearchInput")
-        self.mov_search.setPlaceholderText("🔍  Search movement log by material, reason, or recorder...")
+        self.mov_search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.mov_search.setPlaceholderText("Search movement log by material, reason, or recorder...")
         self.mov_search.setClearButtonEnabled(True)
         self.mov_search.textChanged.connect(self.refresh_movements_table)
         toolbar.addWidget(self.mov_search, 1)
@@ -390,8 +420,9 @@ class InventoryWidget(QWidget):
         self.mov_type_filter.currentIndexChanged.connect(self.refresh_movements_table)
         toolbar.addWidget(self.mov_type_filter)
 
-        self.mov_refresh_btn = QPushButton("↻ Refresh Logs")
+        self.mov_refresh_btn = QPushButton("Refresh Logs")
         self.mov_refresh_btn.setObjectName("SecondaryBtn")
+        self.mov_refresh_btn.setIcon(get_action_icon("refresh", "secondary", 15))
         self.mov_refresh_btn.clicked.connect(self.refresh)
         toolbar.addWidget(self.mov_refresh_btn)
 
@@ -447,7 +478,7 @@ class InventoryWidget(QWidget):
         container = QWidget()
         lay = QHBoxLayout(container)
         lay.setContentsMargins(6, 4, 6, 4)
-        pill = QLabel("⚠️ Low Stock" if is_low else "✓ In Stock")
+        pill = QLabel("● Low Stock" if is_low else "● In Stock")
         pill.setObjectName("StockPill")
         pill.setProperty("alert", "true" if is_low else "false")
         pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -492,18 +523,20 @@ class InventoryWidget(QWidget):
             ]
 
             # Update Top Summary Chips
-            self.total_chip.setText(f"📦 {len(mats)} Materials Tracked")
+            self.total_chip_text.setText(f"{len(mats)} Materials Tracked")
             if low_items:
-                self.low_stock_chip.setText(f"⚠️ {len(low_items)} Items Low on Stock")
+                self.low_stock_chip_text.setText(f"{len(low_items)} Items Low on Stock")
+                self.low_stock_chip_text.setStyleSheet("color: #DC2626; font-size: 12px; font-weight: 600;")
+                self.low_stock_chip_icon.setPixmap(get_pixmap("alert-triangle", color="#DC2626", size=15))
                 self.low_stock_chip.setStyleSheet(
-                    "background: #FEE2E2; color: #DC2626; font-size: 12px; font-weight: 600; "
-                    "padding: 6px 12px; border-radius: 8px; border: 1px solid #FCA5A5;"
+                    "background: #FEE2E2; border-radius: 8px; border: 1px solid #FCA5A5;"
                 )
             else:
-                self.low_stock_chip.setText("✓ Stock Levels Healthy")
+                self.low_stock_chip_text.setText("Stock Levels Healthy")
+                self.low_stock_chip_text.setStyleSheet("color: #15803D; font-size: 12px; font-weight: 600;")
+                self.low_stock_chip_icon.setPixmap(get_pixmap("check-circle", color="#15803D", size=15))
                 self.low_stock_chip.setStyleSheet(
-                    "background: #DCFCE7; color: #15803D; font-size: 12px; font-weight: 600; "
-                    "padding: 6px 12px; border-radius: 8px; border: 1px solid #BBF7D0;"
+                    "background: #DCFCE7; border-radius: 8px; border: 1px solid #BBF7D0;"
                 )
 
             # Filter materials

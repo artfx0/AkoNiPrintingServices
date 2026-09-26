@@ -28,6 +28,7 @@ from payments.payment_management import (
     PaymentManager, PAYMENT_TYPES, PAYMENT_METHODS, PAYMENT_STATUSES,
 )
 from payments.receipt import generate_receipt_pdf
+from ui.icons import get_icon, get_action_icon
 from sales_orders.sales_order_management import OrderManager
 
 _PAYMENT_HEADERS = [
@@ -125,6 +126,7 @@ class PaymentDialog(QDialog):
         cancel.clicked.connect(self.reject)
 
         save = QPushButton("Save Payment")
+        save.setIcon(get_action_icon("check", "primary", 15))
         save.clicked.connect(self._on_save)
 
         btns.addWidget(cancel)
@@ -136,7 +138,7 @@ class PaymentDialog(QDialog):
     def _update_order_preview(self) -> None:
         oid = self.order_box.currentData()
         if oid is None or oid not in self._orders_by_id:
-            self.preview_label.setText("ℹ️ Standalone payment — not linked to any order.")
+            self.preview_label.setText("Standalone payment — not linked to any order.")
             return
 
         order = self._orders_by_id[oid]
@@ -211,7 +213,8 @@ class PaymentWidget(QWidget):
         # Live Search
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
-        self.search.setPlaceholderText("🔍  Search by payment ID or order ID...")
+        self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.setPlaceholderText("Search by payment ID or order ID...")
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(240)
         self.search.textChanged.connect(self.refresh)
@@ -236,22 +239,26 @@ class PaymentWidget(QWidget):
         toolbar.addWidget(self.status_filter)
 
         # Actions
-        self.refresh_btn = QPushButton("↻ Refresh")
+        self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setObjectName("SecondaryBtn")
+        self.refresh_btn.setIcon(get_action_icon("refresh", "secondary", 15))
         self.refresh_btn.clicked.connect(self.refresh)
         toolbar.addWidget(self.refresh_btn)
 
-        self.receipt_btn = QPushButton("🧾 Print Receipt")
+        self.receipt_btn = QPushButton("Print Receipt")
         self.receipt_btn.setObjectName("SecondaryBtn")
+        self.receipt_btn.setIcon(get_action_icon("receipt", "secondary", 15))
         self.receipt_btn.clicked.connect(self.print_receipt)
         toolbar.addWidget(self.receipt_btn)
 
-        self.verify_btn = QPushButton("✅ Verify Payment")
+        self.verify_btn = QPushButton("Verify Payment")
         self.verify_btn.setObjectName("SecondaryBtn")
+        self.verify_btn.setIcon(get_action_icon("shield-check", "secondary", 15))
         self.verify_btn.clicked.connect(self.verify_payment)
         toolbar.addWidget(self.verify_btn)
 
-        self.record_btn = QPushButton("+ Record Payment")
+        self.record_btn = QPushButton("Record Payment")
+        self.record_btn.setIcon(get_action_icon("plus", "primary", 16))
         self.record_btn.clicked.connect(self.record_payment)
         toolbar.addWidget(self.record_btn)
 

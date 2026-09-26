@@ -19,6 +19,7 @@ from PyQt6.QtCore import Qt
 
 from customers.customer_management import CustomerManager
 from database.database import get_connection
+from ui.icons import get_icon, get_action_icon
 
 _CUSTOMER_HEADERS = ["ID", "Customer Name", "Contact Number", "Email Address", "Delivery Address", "Date Registered"]
 
@@ -71,6 +72,7 @@ class CustomerDialog(QDialog):
         cancel.clicked.connect(self.reject)
 
         save = QPushButton("Save Customer")
+        save.setIcon(get_action_icon("check", "primary", 15))
         save.clicked.connect(self._on_save)
 
         btns.addWidget(cancel)
@@ -113,27 +115,32 @@ class CustomerWidget(QWidget):
 
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
-        self.search.setPlaceholderText("🔍  Search by customer name, phone number, or email...")
+        self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.setPlaceholderText("Search by customer name, phone number, or email...")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.refresh)
         toolbar.addWidget(self.search, 1)
 
-        self.refresh_btn = QPushButton("↻ Refresh")
+        self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setObjectName("SecondaryBtn")
+        self.refresh_btn.setIcon(get_action_icon("refresh", "secondary", 15))
         self.refresh_btn.clicked.connect(self.refresh)
         toolbar.addWidget(self.refresh_btn)
 
-        self.edit_btn = QPushButton("✏️ Edit")
+        self.edit_btn = QPushButton("Edit")
         self.edit_btn.setObjectName("SecondaryBtn")
+        self.edit_btn.setIcon(get_action_icon("edit", "secondary", 15))
         self.edit_btn.clicked.connect(self.edit_customer)
         toolbar.addWidget(self.edit_btn)
 
-        self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn = QPushButton("Delete")
         self.delete_btn.setObjectName("DangerBtn")
+        self.delete_btn.setIcon(get_action_icon("trash", "danger", 15))
         self.delete_btn.clicked.connect(self.delete_customer)
         toolbar.addWidget(self.delete_btn)
 
-        self.add_btn = QPushButton("+ Add Customer")
+        self.add_btn = QPushButton("Add Customer")
+        self.add_btn.setIcon(get_action_icon("plus", "primary", 16))
         self.add_btn.clicked.connect(self.add_customer)
         toolbar.addWidget(self.add_btn)
 

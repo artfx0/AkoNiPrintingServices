@@ -22,6 +22,7 @@ from PyQt6.QtCore import Qt
 
 from database.database import get_connection
 from reports.reports import ReportManager
+from ui.icons import get_icon, get_action_icon, get_pixmap
 
 
 def _month_range() -> tuple[str, str, str]:
@@ -128,20 +129,31 @@ class ReportsWidget(QWidget):
 
         # Active reporting period indicator
         _, _, period_label = _month_range()
-        period_badge = QLabel(f"🗓️  Current Reporting Period:  <b>{period_label}</b>")
+        period_badge = QFrame()
         period_badge.setStyleSheet(
-            "background: #FEF3C7; color: #92400E; font-size: 13px; "
-            "padding: 8px 14px; border-radius: 8px; border: 1px solid #FDE68A;"
+            "background: #FEF3C7; border-radius: 8px; border: 1px solid #FDE68A;"
         )
+        pb_lay = QHBoxLayout(period_badge)
+        pb_lay.setContentsMargins(12, 8, 14, 8)
+        pb_lay.setSpacing(8)
+        pb_icon = QLabel()
+        pb_icon.setPixmap(get_pixmap("calendar", color="#B45309", size=16))
+        pb_text = QLabel(f"Current Reporting Period:  <b>{period_label}</b>")
+        pb_text.setStyleSheet("color: #92400E; font-size: 13px;")
+        pb_lay.addWidget(pb_icon)
+        pb_lay.addWidget(pb_text)
+        pb_lay.addStretch(1)
         layout.addWidget(period_badge)
 
-        # 2. Grid of 3 Major Report Cards
+        # 2. Grid of 4 Major Report Cards
         grid = QGridLayout()
         grid.setSpacing(18)
 
         # Card 1: Monthly Sales
         sales_card = self._build_report_card(
-            icon="📊",
+            icon="reports",
+            icon_color="#B45309",
+            icon_bg="#FEF3C7",
             title="Monthly Sales & Revenue Report",
             tag="Sales Analytics",
             desc="Consolidates total sales orders, collected revenue, rush charge fees, and daily turnover breakdown.",
@@ -152,7 +164,9 @@ class ReportsWidget(QWidget):
 
         # Card 2: Inventory Valuation
         inv_card = self._build_report_card(
-            icon="📦",
+            icon="inventory",
+            icon_color="#2563EB",
+            icon_bg="#EFF6FF",
             title="Inventory Valuation & Stock Report",
             tag="Warehouse Audit",
             desc="Physical stock-on-hand audit, item reorder thresholds, low-stock warnings, and unit valuation.",
@@ -163,7 +177,9 @@ class ReportsWidget(QWidget):
 
         # Card 3: Operating Expenses
         exp_card = self._build_report_card(
-            icon="💸",
+            icon="expenses",
+            icon_color="#DC2626",
+            icon_bg="#FEE2E2",
             title="Operating Expenses & Disbursements",
             tag="Financial Outflow",
             desc="Itemized log of operational expenditures categorized by raw materials, labor, utilities, and overhead.",
@@ -174,7 +190,9 @@ class ReportsWidget(QWidget):
 
         # Card 4: Accounts Receivable / Unpaid Orders
         unpaid_card = self._build_report_card(
-            icon="💳",
+            icon="payments",
+            icon_color="#D97706",
+            icon_bg="#FEF3C7",
             title="Accounts Receivable & Unpaid Orders",
             tag="Cashflow Control",
             desc="Export pending customer balances, partial payments, and overdue order receivables for follow-up.",
@@ -191,7 +209,7 @@ class ReportsWidget(QWidget):
 
     def _build_report_card(
         self, icon: str, title: str, tag: str, desc: str,
-        pdf_slot, csv_slot
+        pdf_slot, csv_slot, icon_color: str = "#B45309", icon_bg: str = "#FEF3C7"
     ) -> QFrame:
         """Constructs an elevated card container for a report export module."""
         card = QFrame()
@@ -209,11 +227,13 @@ class ReportsWidget(QWidget):
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
 
-        icon_lbl = QLabel(icon)
+        icon_lbl = QLabel()
+        icon_lbl.setFixedSize(40, 40)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_lbl.setStyleSheet(
-            "font-size: 22px; background: #F8FAFC; border-radius: 10px; "
-            "border: 1px solid #E2E8F0; padding: 8px 10px;"
+            f"background: {icon_bg}; border-radius: 10px; border: 1px solid #E2E8F0;"
         )
+        icon_lbl.setPixmap(get_pixmap(icon, color=icon_color, size=20))
         top_row.addWidget(icon_lbl)
 
         title_box = QVBoxLayout()
@@ -248,13 +268,15 @@ class ReportsWidget(QWidget):
         btn_box.addStretch(1)
 
         if csv_slot:
-            csv_btn = QPushButton("📊 Export CSV")
+            csv_btn = QPushButton("Export CSV")
             csv_btn.setObjectName("SecondaryBtn")
+            csv_btn.setIcon(get_action_icon("file-spreadsheet", "secondary", 15))
             csv_btn.clicked.connect(csv_slot)
             btn_box.addWidget(csv_btn)
 
         if pdf_slot:
-            pdf_btn = QPushButton("📄 Download PDF")
+            pdf_btn = QPushButton("Download PDF")
+            pdf_btn.setIcon(get_action_icon("download", "primary", 15))
             pdf_btn.clicked.connect(pdf_slot)
             btn_box.addWidget(pdf_btn)
 

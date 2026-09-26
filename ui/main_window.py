@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize
 
 from database.database import get_connection
+from ui.icons import get_icon, get_pixmap, get_nav_icon
 
 # Navigation items per role
 ADMIN_NAV = [
@@ -24,15 +25,15 @@ ADMIN_NAV = [
 STAFF_NAV = ["Dashboard", "Inventory"]
 
 NAV_ICONS = {
-    "Dashboard": "📊",
-    "Customers": "👥",
-    "Orders": "🛒",
-    "Payments": "💳",
-    "Inventory": "📦",
-    "Expenses": "💸",
-    "Reports": "📈",
-    "Backup": "💾",
-    "Users": "👤",
+    "Dashboard": "dashboard",
+    "Customers": "customers",
+    "Orders": "orders",
+    "Payments": "payments",
+    "Inventory": "inventory",
+    "Expenses": "expenses",
+    "Reports": "reports",
+    "Backup": "backup",
+    "Users": "users",
 }
 
 
@@ -102,7 +103,8 @@ class MainWindow(QMainWindow):
         # Global search input (styled rounded input matching reference)
         self.search_input = QLineEdit()
         self.search_input.setObjectName("GlobalSearchBar")
-        self.search_input.setPlaceholderText("🔍  Search orders, customers, inventory...")
+        self.search_input.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
+        self.search_input.setPlaceholderText("Search orders, customers, inventory...")
         self.search_input.setFixedWidth(360)
         self.search_input.returnPressed.connect(self._handle_global_search)
         lay.addWidget(self.search_input)
@@ -115,8 +117,10 @@ class MainWindow(QMainWindow):
         right_box.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         # Notification / Low stock bell button
-        self.bell_btn = QPushButton("🔔")
+        self.bell_btn = QPushButton()
         self.bell_btn.setObjectName("HeaderIconBtn")
+        self.bell_btn.setIcon(get_icon("bell", color="#64748B", size=18))
+        self.bell_btn.setIconSize(QSize(18, 18))
         self.bell_btn.setToolTip("Inventory Alerts")
         self.bell_btn.clicked.connect(lambda: self.navigate_to_tab("Inventory"))
         right_box.addWidget(self.bell_btn)
@@ -157,8 +161,10 @@ class MainWindow(QMainWindow):
         right_box.addLayout(user_info)
 
         # Logout Button
-        logout_btn = QPushButton("Logout")
+        logout_btn = QPushButton(" Sign Out")
         logout_btn.setObjectName("LogoutBtn")
+        logout_btn.setIcon(get_icon("logout", color="#64748B", size=14))
+        logout_btn.setIconSize(QSize(14, 14))
         logout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         logout_btn.clicked.connect(self.request_logout)
         right_box.addWidget(logout_btn)
@@ -181,10 +187,11 @@ class MainWindow(QMainWindow):
         brand_box.setSpacing(10)
         brand_box.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        brand_icon = QLabel("🖨️")
+        brand_icon = QLabel()
         brand_icon.setObjectName("BrandLogoIcon")
         brand_icon.setFixedSize(34, 34)
         brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_icon.setPixmap(get_pixmap("printer", color="#D4AF37", size=20))
         brand_box.addWidget(brand_icon)
 
         brand_text_box = QVBoxLayout()
@@ -208,6 +215,7 @@ class MainWindow(QMainWindow):
         # Navigation List Widget
         self.nav = QListWidget()
         self.nav.setObjectName("NavList")
+        self.nav.setIconSize(QSize(18, 18))
         self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         lay.addWidget(self.nav, 1)
@@ -224,10 +232,11 @@ class MainWindow(QMainWindow):
     def _build_pages(self) -> None:
         nav_labels = ADMIN_NAV if self._is_admin else STAFF_NAV
 
-        # Setup navigation items with icons
+        # Setup navigation items with crisp state-aware vector icons
         for label in nav_labels:
-            icon = NAV_ICONS.get(label, "●")
-            item = QListWidgetItem(f" {icon}   {label}")
+            icon_name = NAV_ICONS.get(label, "info")
+            item = QListWidgetItem(f"  {label}")
+            item.setIcon(get_nav_icon(icon_name, size=18))
             item.setSizeHint(QSize(190, 42))
             self.nav.addItem(item)
 
@@ -266,9 +275,6 @@ class MainWindow(QMainWindow):
         else:
             from inventory.inventory_widget import InventoryWidget
             from reports.dashboard_widget import DashboardWidget
-            from ui.staff_dashboard import StaffDashboard
-
-            self._backend = StaffDashboard(self.user)
 
             self.dashboard_page = DashboardWidget(user=self.user)
             self.dashboard_page.navigation_requested.connect(self.navigate_to_tab)
@@ -296,7 +302,24 @@ class MainWindow(QMainWindow):
                 self.order_page.search.setText(query)
 
     def request_logout(self) -> None:
+        confirm = QMessageBox.question(
+            self,
+            "Sign Out",
+            "Are you sure you want to sign out?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
         from auth.session import Session
         Session.clear()
         self.logout_requested = True
         self.close()
+
+    def closeEvent(self, event) -> None:
+        event.accept()
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app:
+            app.quit()
