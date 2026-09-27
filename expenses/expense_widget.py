@@ -10,7 +10,7 @@ Features:
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
 
 from PyQt6.QtWidgets import (
@@ -26,10 +26,28 @@ from database.database import get_connection
 from expenses.expense_management import ExpenseManager, EXPENSE_CATEGORIES
 from inventory.inventory_management import StockMovementManager
 from ui.icons import get_icon, get_action_icon
+from ui.kpi_card import StatusKpiCard
 
 _EXPENSE_HEADERS = [
     "Expense #", "Date", "Category", "Amount", "Description", "Recorded By"
 ]
+
+
+def _format_datetime(val) -> str:
+    """Format expense datetime into human-readable YYYY-MM-DD HH:MM."""
+    if val is None or val == "":
+        return "—"
+    if isinstance(val, (datetime, date)):
+        return val.strftime("%Y-%m-%d %H:%M")
+    s = str(val).strip()
+    try:
+        s = s.replace("T", " ")
+        parts = s.split(":")
+        if len(parts) >= 2:
+            return f"{parts[0]}:{parts[1]}"
+    except Exception:
+        pass
+    return s
 
 
 def _unlinked_in_movements(conn) -> list[dict]:
@@ -136,6 +154,7 @@ class ExpenseWidget(QWidget):
     def __init__(self, user: dict | None = None, parent=None):
         super().__init__(parent)
         self.user = user or {}
+        self.selected_category: str | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 28)
@@ -152,7 +171,7 @@ class ExpenseWidget(QWidget):
         header_lay.addWidget(sub)
         layout.addLayout(header_lay)
 
-        # 2. Total Summary Card
+        # 2. Total Disbursements Summary Banner
         summary_card = QFrame()
         summary_card.setObjectName("SummaryBox")
         sum_lay = QHBoxLayout(summary_card)
@@ -172,7 +191,20 @@ class ExpenseWidget(QWidget):
         sum_lay.addStretch(1)
         layout.addWidget(summary_card)
 
-        # 3. Action Toolbar (Search, Filter, Date Range, Actions)
+        # 3. KPI Summary Cards Row (Below banner, above search bar)
+        kpi_row = QHBoxLayout()
+        kpi_row.setSpacing(12)
+
+        self.category_cards: dict[str, StatusKpiCard] = {}
+        for cat in EXPENSE_CATEGORIES:
+            card = StatusKpiCard(cat, value=0, parent=self)
+            card.clicked.connect(self._on_category_card_clicked)
+            self.category_cards[cat] = card
+            kpi_row.addWidget(card, 1)
+
+        layout.addLayout(kpi_row)
+
+        # 4. Action Toolbar (Search on left, Date range, Actions on right)
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
 
@@ -180,20 +212,11 @@ class ExpenseWidget(QWidget):
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
         self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
-        self.search.setPlaceholderText("Search description or recorder...")
+        self.search.setPlaceholderText("Search description, recorder, or expense #...")
         self.search.setClearButtonEnabled(True)
-        self.search.setMinimumWidth(220)
-        self.search.textChanged.connect(self.refresh)
+        self.search.setMinimumWidth(260)
+        self.search.textChanged.connect(self._load_table_data)
         toolbar.addWidget(self.search, 1)
-
-        # Category Filter
-        self.category_box = QComboBox()
-        self.category_box.setObjectName("TableFilterCombo")
-        self.category_box.addItem("All Categories", "")
-        for c in EXPENSE_CATEGORIES:
-            self.category_box.addItem(c, c)
-        self.category_box.currentIndexChanged.connect(self.refresh)
-        toolbar.addWidget(self.category_box)
 
         # Date Pickers with Checkboxes
         self.from_check = QCheckBox("From:")
@@ -234,7 +257,7 @@ class ExpenseWidget(QWidget):
 
         layout.addLayout(toolbar)
 
-        # 4. Card Container wrapping the Table
+        # 5. Card Container wrapping the Table
         card = QFrame()
         card.setObjectName("ModuleCardContainer")
         card_lay = QVBoxLayout(card)
@@ -247,12 +270,38 @@ class ExpenseWidget(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(42)
+
+        header = self.table.horizontalHeader()
+        header.setHighlightSections(False)
+
+        # Col 0: Expense # (Fixed width: 95px)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(0, 95)
+
+        # Col 1: Date (Fixed width: 155px)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 155)
+
+        # Col 2: Category (Fixed width: 135px, centered)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(2, 135)
+        if self.table.horizontalHeaderItem(2):
+            self.table.horizontalHeaderItem(2).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Col 3: Amount (Fixed width: 140px, right-aligned)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(3, 140)
+        if self.table.horizontalHeaderItem(3):
+            self.table.horizontalHeaderItem(3).setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+
+        # Col 4: Description (Stretch to fill remaining horizontal space)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+
+        # Col 5: Recorded By (Fixed width: 160px)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(5, 160)
 
         card_lay.addWidget(self.table)
         layout.addWidget(card, 1)
@@ -278,7 +327,7 @@ class ExpenseWidget(QWidget):
         if end is not None:
             end = f"{end} 23:59:59"
         return {
-            "category": self.category_box.currentData() or "",
+            "category": self.selected_category or "",
             "start": start,
             "end": end,
         }
@@ -297,18 +346,21 @@ class ExpenseWidget(QWidget):
         container = QWidget()
         lay = QHBoxLayout(container)
         lay.setContentsMargins(6, 4, 6, 4)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pill = QLabel(cat)
         pill.setObjectName("StatusPill")
 
         cat_lower = cat.lower()
-        if "material" in cat_lower:
+        if "labor" in cat_lower:
             pill.setProperty("status", "processing")  # Blue
-        elif "labor" in cat_lower:
-            pill.setProperty("status", "paid")        # Green
+        elif "material" in cat_lower:
+            pill.setProperty("status", "completed")   # Green
+        elif "misc" in cat_lower:
+            pill.setProperty("status", "refunded")    # Purple
         elif "utility" in cat_lower:
-            pill.setProperty("status", "ready")       # Purple
+            pill.setProperty("status", "pending")     # Orange
         else:
-            pill.setProperty("status", "pending")     # Amber
+            pill.setProperty("status", "other")       # Grey
 
         pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pill.style().unpolish(pill)
@@ -317,14 +369,35 @@ class ExpenseWidget(QWidget):
         return container
 
     # -- Core logic --
-    def clear_filters(self) -> None:
-        self.from_check.setChecked(False)
-        self.to_check.setChecked(False)
-        self.category_box.setCurrentIndex(0)
-        self.search.clear()
-        self.refresh()
+    def _on_category_card_clicked(self, category: str) -> None:
+        if self.selected_category == category:
+            # Clicked active card again: toggle off, clear filter
+            self.selected_category = None
+            if category in self.category_cards:
+                self.category_cards[category].set_active(False)
+        else:
+            # Activate clicked card, reset all others to default white
+            self.selected_category = category
+            for cat, card in self.category_cards.items():
+                card.set_active(cat == category)
 
-    def refresh(self) -> None:
+        self._load_table_data()
+
+    def _load_category_counts(self) -> None:
+        f = self._filter_values()
+        conn = self._conn()
+        try:
+            counts = ExpenseManager(conn).count_expenses_by_category(
+                start=f["start"], end=f["end"]
+            )
+            for cat, card in self.category_cards.items():
+                card.set_value(counts.get(cat, 0))
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            conn.close()
+
+    def _load_table_data(self) -> None:
         f = self._filter_values()
         conn = self._conn()
         try:
@@ -338,6 +411,7 @@ class ExpenseWidget(QWidget):
                     r for r in rows
                     if needle in str(r.get("description") or "").lower()
                     or needle in str(r.get("recorded_by") or "").lower()
+                    or needle in str(r.get("category") or "").lower()
                     or needle in str(r.get("expense_id") or "").lower()
                 ]
 
@@ -346,7 +420,7 @@ class ExpenseWidget(QWidget):
 
             for r, row in enumerate(rows):
                 eid = row.get("expense_id")
-                edate = str(row.get("expense_date") or "")
+                edate = _format_datetime(row.get("expense_date"))
                 cat = str(row.get("category") or "Other")
                 amt = Decimal(str(row.get("amount") or 0))
                 desc = str(row.get("description") or "—")
@@ -354,12 +428,33 @@ class ExpenseWidget(QWidget):
 
                 total += amt
 
-                self.table.setItem(r, 0, QTableWidgetItem(f"#{eid}"))
-                self.table.setItem(r, 1, QTableWidgetItem(edate))
+                # Col 0: Expense # (Centered)
+                it_id = QTableWidgetItem(f"#{eid}")
+                it_id.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(r, 0, it_id)
+
+                # Col 1: Date (Centered)
+                it_date = QTableWidgetItem(edate)
+                it_date.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(r, 1, it_date)
+
+                # Col 2: Category (Centered pill)
                 self.table.setCellWidget(r, 2, self._create_category_pill(cat))
-                self.table.setItem(r, 3, QTableWidgetItem(f"P{amt:,.2f}"))
-                self.table.setItem(r, 4, QTableWidgetItem(desc))
-                self.table.setItem(r, 5, QTableWidgetItem(rec_by))
+
+                # Col 3: Amount (Right-aligned)
+                it_amt = QTableWidgetItem(f"P{amt:,.2f}")
+                it_amt.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+                self.table.setItem(r, 3, it_amt)
+
+                # Col 4: Description (Stretch to fill space, tooltip for full text)
+                it_desc = QTableWidgetItem(desc)
+                it_desc.setToolTip(desc)
+                self.table.setItem(r, 4, it_desc)
+
+                # Col 5: Recorded By (Left-aligned)
+                it_rec = QTableWidgetItem(rec_by)
+                it_rec.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                self.table.setItem(r, 5, it_rec)
 
             self.total_label.setText(f"P{total:,.2f}")
             self.count_label.setText(f"({len(rows)} {'transaction' if len(rows) == 1 else 'transactions'} displayed)")
@@ -368,6 +463,19 @@ class ExpenseWidget(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to load expenses:\n{exc}")
         finally:
             conn.close()
+
+    def refresh(self) -> None:
+        self._load_category_counts()
+        self._load_table_data()
+
+    def clear_filters(self) -> None:
+        self.from_check.setChecked(False)
+        self.to_check.setChecked(False)
+        self.selected_category = None
+        for card in self.category_cards.values():
+            card.set_active(False)
+        self.search.clear()
+        self.refresh()
 
     def add_expense(self) -> None:
         conn = self._conn()

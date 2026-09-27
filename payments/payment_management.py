@@ -9,7 +9,8 @@ from decimal import Decimal
 
 PAYMENT_TYPES = ("DesignFee", "Assurance", "ProductOrder", "RushFee")
 PAYMENT_METHODS = ("Cash", "GCash", "Bank Transfer", "Card", "Other")
-PAYMENT_STATUSES = ("Pending", "Completed", "Refunded", "Cancelled")
+PAYMENT_KPI_STATUSES = ("Completed", "Pending", "Verified", "Failed", "Refunded")
+PAYMENT_STATUSES = ("Completed", "Pending", "Verified", "Failed", "Refunded", "Cancelled")
 
 
 def _to_decimal(value) -> Decimal:
@@ -56,12 +57,31 @@ class PaymentManager:
                 pass
         return payment_id
 
-    def list_payments(self, order_id: int | None = None, payment_type: str = "") -> list[dict]:
+    def count_payments_by_status(self) -> dict[str, int]:
+        """Count total payments for each KPI status."""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("SELECT status, COUNT(*) FROM payments GROUP BY status")
+            counts = {s: 0 for s in PAYMENT_KPI_STATUSES}
+            for status, count in cursor.fetchall():
+                counts[status] = int(count)
+            return counts
+        finally:
+            cursor.close()
+
+    def list_payments(self, order_id: int | None = None, payment_type: str = "",
+                      status: str = "") -> list[dict]:
         cursor = self.conn.cursor(dictionary=True)
         try:
-            sql = ("SELECT p.*, CONCAT(u.first_name, ' ', u.last_name) AS processed_by"
-                   " FROM payments p JOIN users u ON u.user_id = p.processed_by_user_id"
-                   " WHERE 1=1")
+            sql = (
+                "SELECT p.*, CONCAT(u.first_name, ' ', u.last_name) AS processed_by,"
+                " c.first_name AS customer_first_name, c.last_name AS customer_last_name"
+                " FROM payments p"
+                " JOIN users u ON u.user_id = p.processed_by_user_id"
+                " LEFT JOIN customer_orders o ON o.order_id = p.order_id"
+                " LEFT JOIN customers c ON c.customer_id = o.customer_id"
+                " WHERE 1=1"
+            )
             params: list = []
             if order_id is not None:
                 sql += " AND p.order_id = %s"
@@ -69,9 +89,24 @@ class PaymentManager:
             if payment_type:
                 sql += " AND p.payment_type = %s"
                 params.append(payment_type)
+            if status:
+                sql += " AND p.status = %s"
+                params.append(status)
             sql += " ORDER BY p.payment_date DESC"
             cursor.execute(sql, params)
-            return list(cursor.fetchall())
+            rows = list(cursor.fetchall())
+            for r in rows:
+                if r.get("order_id") is None:
+                    r["customer_name"] = "— (Layout)"
+                elif r.get("customer_last_name") and r.get("customer_first_name"):
+                    r["customer_name"] = f"{r['customer_last_name']}, {r['customer_first_name']}"
+                elif r.get("customer_last_name"):
+                    r["customer_name"] = r["customer_last_name"]
+                elif r.get("customer_first_name"):
+                    r["customer_name"] = r["customer_first_name"]
+                else:
+                    r["customer_name"] = "—"
+            return rows
         finally:
             cursor.close()
 
@@ -137,8 +172,30 @@ class PaymentManager:
     def get_payment(self, payment_id: int) -> dict | None:
         cursor = self.conn.cursor(dictionary=True)
         try:
-            cursor.execute("SELECT * FROM payments WHERE payment_id = %s", (payment_id,))
-            return cursor.fetchone()
+            sql = (
+                "SELECT p.*, CONCAT(u.first_name, ' ', u.last_name) AS processed_by,"
+                " c.first_name AS customer_first_name, c.last_name AS customer_last_name"
+                " FROM payments p"
+                " JOIN users u ON u.user_id = p.processed_by_user_id"
+                " LEFT JOIN customer_orders o ON o.order_id = p.order_id"
+                " LEFT JOIN customers c ON c.customer_id = o.customer_id"
+                " WHERE p.payment_id = %s"
+            )
+            cursor.execute(sql, (payment_id,))
+            r = cursor.fetchone()
+            if not r:
+                return None
+            if r.get("order_id") is None:
+                r["customer_name"] = "— (Layout)"
+            elif r.get("customer_last_name") and r.get("customer_first_name"):
+                r["customer_name"] = f"{r['customer_last_name']}, {r['customer_first_name']}"
+            elif r.get("customer_last_name"):
+                r["customer_name"] = r["customer_last_name"]
+            elif r.get("customer_first_name"):
+                r["customer_name"] = r["customer_first_name"]
+            else:
+                r["customer_name"] = "—"
+            return r
         finally:
             cursor.close()
 

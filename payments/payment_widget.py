@@ -26,13 +26,15 @@ from PyQt6.QtGui import QDoubleValidator
 from database.database import get_connection
 from payments.payment_management import (
     PaymentManager, PAYMENT_TYPES, PAYMENT_METHODS, PAYMENT_STATUSES,
+    PAYMENT_KPI_STATUSES,
 )
 from payments.receipt import generate_receipt_pdf
 from ui.icons import get_icon, get_action_icon
+from ui.kpi_card import StatusKpiCard
 from sales_orders.sales_order_management import OrderManager
 
 _PAYMENT_HEADERS = [
-    "Payment #", "Order #", "Type", "Method",
+    "Payment #", "Customer Name", "Order #", "Type", "Method",
     "Amount Paid", "Date", "Status", "Processed By"
 ]
 
@@ -190,6 +192,7 @@ class PaymentWidget(QWidget):
     def __init__(self, user: dict | None = None, parent=None):
         super().__init__(parent)
         self.user = user or {}
+        self.selected_status: str | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 28)
@@ -206,7 +209,20 @@ class PaymentWidget(QWidget):
         header_lay.addWidget(sub)
         layout.addLayout(header_lay)
 
-        # 2. Action Toolbar
+        # 2. KPI Summary Cards Row (5 Cards horizontally stretching equally)
+        kpi_row = QHBoxLayout()
+        kpi_row.setSpacing(12)
+
+        self.status_cards: dict[str, StatusKpiCard] = {}
+        for status in PAYMENT_KPI_STATUSES:
+            card = StatusKpiCard(status, value=0, parent=self)
+            card.clicked.connect(self._on_status_card_clicked)
+            self.status_cards[status] = card
+            kpi_row.addWidget(card, 1)
+
+        layout.addLayout(kpi_row)
+
+        # 3. Action Toolbar (Search & Payment Type on left, Actions on right)
         toolbar = QHBoxLayout()
         toolbar.setSpacing(12)
 
@@ -214,10 +230,10 @@ class PaymentWidget(QWidget):
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
         self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
-        self.search.setPlaceholderText("Search by payment ID or order ID...")
+        self.search.setPlaceholderText("Search by payment #, customer name, order #, or method...")
         self.search.setClearButtonEnabled(True)
-        self.search.setMinimumWidth(240)
-        self.search.textChanged.connect(self.refresh)
+        self.search.setMinimumWidth(260)
+        self.search.textChanged.connect(self._load_table_data)
         toolbar.addWidget(self.search, 1)
 
         # Payment Type Filter
@@ -226,17 +242,8 @@ class PaymentWidget(QWidget):
         self.type_filter.addItem("All Payment Types", "")
         for t in PAYMENT_TYPES:
             self.type_filter.addItem(t, t)
-        self.type_filter.currentIndexChanged.connect(self.refresh)
+        self.type_filter.currentIndexChanged.connect(self._load_table_data)
         toolbar.addWidget(self.type_filter)
-
-        # Status Filter
-        self.status_filter = QComboBox()
-        self.status_filter.setObjectName("TableFilterCombo")
-        self.status_filter.addItem("All Statuses", "")
-        for s in PAYMENT_STATUSES:
-            self.status_filter.addItem(s, s)
-        self.status_filter.currentIndexChanged.connect(self.refresh)
-        toolbar.addWidget(self.status_filter)
 
         # Actions
         self.refresh_btn = QPushButton("Refresh")
@@ -264,7 +271,7 @@ class PaymentWidget(QWidget):
 
         layout.addLayout(toolbar)
 
-        # 3. Card Container wrapping Table
+        # 4. Card Container wrapping Table
         card = QFrame()
         card.setObjectName("ModuleCardContainer")
         card_lay = QVBoxLayout(card)
@@ -279,7 +286,7 @@ class PaymentWidget(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.doubleClicked.connect(self.print_receipt)
@@ -326,24 +333,53 @@ class PaymentWidget(QWidget):
         return container
 
     # -- Core logic --
-    def refresh(self) -> None:
+    def _on_status_card_clicked(self, status: str) -> None:
+        if self.selected_status == status:
+            # Clicked active card again: toggle off, clear filter
+            self.selected_status = None
+            if status in self.status_cards:
+                self.status_cards[status].set_active(False)
+        else:
+            # Activate clicked card, reset all others to default white
+            self.selected_status = status
+            for s, card in self.status_cards.items():
+                card.set_active(s == status)
+
+        self._load_table_data()
+
+    def _load_status_counts(self) -> None:
+        conn = self._conn()
+        try:
+            counts = PaymentManager(conn).count_payments_by_status()
+            for s, card in self.status_cards.items():
+                card.set_value(counts.get(s, 0))
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            conn.close()
+
+    def _load_table_data(self) -> None:
         conn = self._conn()
         try:
             ptype = self.type_filter.currentData() or ""
             rows = PaymentManager(conn).list_payments(payment_type=ptype)
 
-            # Filter by status if set
-            status_filter = self.status_filter.currentData()
-            if status_filter:
-                rows = [r for r in rows if r.get("status") == status_filter]
+            # Filter by selected KPI status if active
+            if self.selected_status:
+                rows = [
+                    r for r in rows
+                    if (r.get("status") or "").lower() == self.selected_status.lower()
+                ]
 
             # Filter by search needle
             needle = self.search.text().strip().lower()
             if needle:
                 rows = [
                     r for r in rows
-                    if needle in str(r.get("order_id") or "").lower()
-                    or needle in str(r.get("payment_id") or "").lower()
+                    if needle in str(r.get("payment_id") or "").lower()
+                    or needle in str(r.get("customer_name") or "").lower()
+                    or needle in str(r.get("order_id") or "").lower()
+                    or needle in str(r.get("payment_type") or "").lower()
                     or needle in str(r.get("payment_method") or "").lower()
                     or needle in str(r.get("processed_by") or "").lower()
                 ]
@@ -351,6 +387,7 @@ class PaymentWidget(QWidget):
             self.table.setRowCount(len(rows))
             for r, row in enumerate(rows):
                 pid = row.get("payment_id")
+                cname = row.get("customer_name") or "—"
                 oid = row.get("order_id")
                 ptype = row.get("payment_type") or "ProductOrder"
                 method = row.get("payment_method") or "Cash"
@@ -359,21 +396,33 @@ class PaymentWidget(QWidget):
                 status = str(row.get("status") or "Completed")
                 by_user = str(row.get("processed_by") or "—")
 
+                # Column 0: Payment #
                 self.table.setItem(r, 0, QTableWidgetItem(f"#{pid}"))
-                self.table.setItem(r, 1, QTableWidgetItem(f"#{oid}" if oid is not None else "— (Layout)"))
-                self.table.setItem(r, 2, QTableWidgetItem(str(ptype)))
-                self.table.setItem(r, 3, QTableWidgetItem(str(method)))
-                self.table.setItem(r, 4, QTableWidgetItem(f"P{amt:,.2f}"))
-                self.table.setItem(r, 5, QTableWidgetItem(pdate))
-
-                # Status pill
-                self.table.setCellWidget(r, 6, self._create_pill_widget(status, status))
-                self.table.setItem(r, 7, QTableWidgetItem(by_user))
+                # Column 1: Customer Name (NEW)
+                self.table.setItem(r, 1, QTableWidgetItem(str(cname)))
+                # Column 2: Order #
+                self.table.setItem(r, 2, QTableWidgetItem(f"#{oid}" if oid is not None else "— (Layout)"))
+                # Column 3: Type
+                self.table.setItem(r, 3, QTableWidgetItem(str(ptype)))
+                # Column 4: Method
+                self.table.setItem(r, 4, QTableWidgetItem(str(method)))
+                # Column 5: Amount Paid
+                self.table.setItem(r, 5, QTableWidgetItem(f"P{amt:,.2f}"))
+                # Column 6: Date
+                self.table.setItem(r, 6, QTableWidgetItem(pdate))
+                # Column 7: Status (Pill)
+                self.table.setCellWidget(r, 7, self._create_pill_widget(status, status))
+                # Column 8: Processed By
+                self.table.setItem(r, 8, QTableWidgetItem(by_user))
 
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", f"Failed to load payments:\n{exc}")
         finally:
             conn.close()
+
+    def refresh(self) -> None:
+        self._load_status_counts()
+        self._load_table_data()
 
     def _open_orders(self) -> list[dict]:
         from reports.reports import ReportManager

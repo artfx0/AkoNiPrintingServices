@@ -284,6 +284,11 @@ QLabel#KpiIconBadge[theme="amber"] {
     color: #CA8A04;
 }
 
+QLabel#KpiIconBadge[theme="green"] {
+    background-color: #DCFCE7;
+    color: #16A34A;
+}
+
 /* ----------------------- 2x2 Dashboard Panels ----------------------- */
 QFrame#DashboardPanel {
     background-color: #FFFFFF;
@@ -359,12 +364,12 @@ QLabel#StatusPill[status="pending"] {
     color: #B45309;
 }
 
-QLabel#StatusPill[status="processing"], QLabel#StatusPill[status="in progress"] {
+QLabel#StatusPill[status="processing"], QLabel#StatusPill[status="in progress"], QLabel#StatusPill[status="verified"] {
     background-color: #DBEAFE;
     color: #1D4ED8;
 }
 
-QLabel#StatusPill[status="ready"] {
+QLabel#StatusPill[status="ready"], QLabel#StatusPill[status="refunded"] {
     background-color: #F3E8FF;
     color: #7E22CE;
 }
@@ -374,9 +379,39 @@ QLabel#StatusPill[status="delivered"] {
     color: #0F766E;
 }
 
-QLabel#StatusPill[status="cancelled"] {
+QLabel#StatusPill[status="cancelled"], QLabel#StatusPill[status="failed"] {
     background-color: #FEE2E2;
     color: #DC2626;
+}
+
+QLabel#StatusPill[status="other"] {
+    background-color: #F1F5F9;
+    color: #475569;
+}
+
+QLabel#StatusPill[status="sales"] {
+    background-color: #FEF3C7;
+    color: #92400E;
+}
+
+QLabel#StatusPill[status="materials"] {
+    background-color: #DCFCE7;
+    color: #15803D;
+}
+
+QLabel#StatusPill[status="labor"] {
+    background-color: #DBEAFE;
+    color: #1D4ED8;
+}
+
+QLabel#StatusPill[status="miscellaneous"] {
+    background-color: #F3E8FF;
+    color: #7E22CE;
+}
+
+QLabel#StatusPill[status="utility"] {
+    background-color: #FFEDD5;
+    color: #C2410C;
 }
 
 QLabel#StockPill {

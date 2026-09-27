@@ -255,6 +255,7 @@ class MainWindow(QMainWindow):
             self.dashboard_page.navigation_requested.connect(self.navigate_to_tab)
 
             self.customer_page = CustomerWidget()
+            self.customer_page.new_order_requested.connect(self._handle_customer_new_order)
             self.order_page = OrderWidget(user=self.user)
             self.payment_page = PaymentWidget(user=self.user)
             self.inventory_page = InventoryWidget(user=self.user)
@@ -290,6 +291,12 @@ class MainWindow(QMainWindow):
         if tab_name in labels:
             idx = labels.index(tab_name)
             self.nav.setCurrentRow(idx)
+
+    def _handle_customer_new_order(self, customer_id: int) -> None:
+        """Switch to Orders module and open NewOrderDialog with customer pre-selected."""
+        self.navigate_to_tab("Orders")
+        if hasattr(self, "order_page"):
+            self.order_page.new_order(preselected_customer_id=customer_id)
 
     def _handle_global_search(self) -> None:
         query = self.search_input.text().strip()

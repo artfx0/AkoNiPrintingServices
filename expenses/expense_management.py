@@ -58,6 +58,27 @@ class ExpenseManager:
         finally:
             cursor.close()
 
+    def count_expenses_by_category(self, start=None, end=None) -> dict[str, int]:
+        """Count total expenses for each category."""
+        cursor = self.conn.cursor()
+        try:
+            sql = "SELECT category, COUNT(*) FROM expenses WHERE 1=1"
+            params: list = []
+            if start:
+                sql += " AND expense_date >= %s"
+                params.append(start)
+            if end:
+                sql += " AND expense_date <= %s"
+                params.append(end)
+            sql += " GROUP BY category"
+            cursor.execute(sql, params)
+            counts = {c: 0 for c in EXPENSE_CATEGORIES}
+            for cat, count in cursor.fetchall():
+                counts[cat] = int(count)
+            return counts
+        finally:
+            cursor.close()
+
     def update_expense(self, expense_id: int, **fields) -> None:
         allowed = {"category", "amount", "description", "expense_date"}
         sets, params = [], []

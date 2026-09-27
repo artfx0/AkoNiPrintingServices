@@ -13,6 +13,8 @@ DESIGN_ASSURANCE_DEDUCTION = Decimal("500.00")
 
 ORDER_TYPES = ("LayoutOnly", "ProductOrder")
 ORDER_STATUSES = ("Pending", "Processing", "Paid", "In Progress", "Ready", "Delivered", "Cancelled")
+CANCELLABLE_STATUSES = ("Pending", "Processing", "In Progress")
+NON_CANCELLABLE_STATUSES = ("Paid", "Ready", "Delivered")
 
 
 def _to_decimal(value) -> Decimal:
@@ -83,7 +85,19 @@ class OrderManager:
             cursor.close()
 
     # -- read --
-    def list_orders(self, status: str = "", customer_search: str = "") -> list[dict]:
+    def count_orders_by_status(self) -> dict[str, int]:
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("SELECT status, COUNT(*) FROM customer_orders GROUP BY status")
+            counts = {s: 0 for s in ORDER_STATUSES}
+            for status, count in cursor.fetchall():
+                counts[status] = int(count)
+            return counts
+        finally:
+            cursor.close()
+
+    def list_orders(self, status: str = "", customer_search: str = "",
+                    from_date: str | None = None, to_date: str | None = None) -> list[dict]:
         cursor = self.conn.cursor(dictionary=True)
         try:
             sql = (
@@ -96,9 +110,15 @@ class OrderManager:
                 sql += " AND o.status = %s"
                 params.append(status)
             if customer_search.strip():
-                sql += " AND (c.first_name LIKE %s OR c.last_name LIKE %s)"
+                sql += " AND (c.first_name LIKE %s OR c.last_name LIKE %s OR CAST(o.order_id AS CHAR) LIKE %s)"
                 like = f"%{customer_search.strip()}%"
-                params.extend([like, like])
+                params.extend([like, like, like])
+            if from_date:
+                sql += " AND DATE(o.order_date) >= %s"
+                params.append(from_date)
+            if to_date:
+                sql += " AND DATE(o.order_date) <= %s"
+                params.append(to_date)
             sql += " ORDER BY o.order_date DESC"
             cursor.execute(sql, params)
             return list(cursor.fetchall())
@@ -108,7 +128,15 @@ class OrderManager:
     def get_order(self, order_id: int) -> dict | None:
         cursor = self.conn.cursor(dictionary=True)
         try:
-            cursor.execute("SELECT * FROM customer_orders WHERE order_id = %s", (order_id,))
+            sql = (
+                "SELECT o.*, CONCAT(c.first_name, ' ', c.last_name) AS customer_name,"
+                " c.first_name, c.last_name, c.contact_number, c.email_address,"
+                " c.address AS customer_registered_address"
+                " FROM customer_orders o"
+                " LEFT JOIN customers c ON c.customer_id = o.customer_id"
+                " WHERE o.order_id = %s"
+            )
+            cursor.execute(sql, (order_id,))
             order = cursor.fetchone()
             if not order:
                 return None
@@ -146,11 +174,47 @@ class OrderManager:
         finally:
             cursor.close()
 
+    def can_cancel_status(self, status: str) -> bool:
+        """Return True if an order with the given status can be cancelled."""
+        return status in CANCELLABLE_STATUSES
+
+    def validate_cancellation(self, current_status: str, order_id: int | None = None) -> None:
+        """Enforce the business rule preventing order cancellation for certain statuses.
+
+        Business Rule:
+          - Cannot cancel if status is: Paid, Ready, or Delivered.
+          - Can cancel only if status is: Pending, Processing, or In Progress.
+        """
+        id_str = f" #{order_id:05d}" if order_id else ""
+        if current_status in NON_CANCELLABLE_STATUSES:
+            raise ValueError(
+                f"Cannot cancel order{id_str} because its status is '{current_status}'.\n\n"
+                f"Business Rule:\n"
+                f"• Cannot cancel if status is: Paid, Ready, or Delivered.\n"
+                f"• Can cancel only if status is: Pending, Processing, or In Progress."
+            )
+        if current_status == "Cancelled":
+            raise ValueError(f"Order{id_str} is already cancelled.")
+        if current_status not in CANCELLABLE_STATUSES:
+            raise ValueError(
+                f"Cannot cancel order{id_str} with status '{current_status}'. "
+                f"Only Pending, Processing, or In Progress orders can be cancelled."
+            )
+
     def update_status(self, order_id: int, status: str) -> None:
         if status not in ORDER_STATUSES:
             raise ValueError(f"status must be one of {ORDER_STATUSES}")
         cursor = self.conn.cursor()
         try:
+            cursor.execute("SELECT status FROM customer_orders WHERE order_id = %s", (order_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError(f"Order #{order_id} not found.")
+            current_status = row[0]
+
+            if status == "Cancelled":
+                self.validate_cancellation(current_status, order_id=order_id)
+
             if status == "Delivered":
                 cursor.execute(
                     "UPDATE customer_orders SET status=%s, actual_delivery_date=%s WHERE order_id=%s",
@@ -162,6 +226,10 @@ class OrderManager:
             self.conn.commit()
         finally:
             cursor.close()
+
+    def cancel_order(self, order_id: int) -> None:
+        """Cancel an order following the business rule."""
+        self.update_status(order_id, "Cancelled")
 
     def update_order(self, order_id: int, rush_charge=None, is_design_fee_deducted=None,
                      expected_delivery_date=None, delivery_address=None,

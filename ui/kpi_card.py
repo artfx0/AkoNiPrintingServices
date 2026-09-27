@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QVBoxLayout, QGraphicsDropShadowEffect,
     QSizePolicy, QStyle, QApplication,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPixmap
 
 TONE_POSITIVE = "positive"
@@ -174,6 +174,142 @@ class KpiCard(QFrame):
 
     def is_alert(self) -> bool:
         return bool(self.property("alert"))
+
+
+class StatusKpiCard(QFrame):
+    """Custom Status KPI Summary Card for Sales and Order Management.
+
+    Features:
+      - Default state: #FFFFFF background, 1px solid #E0E0E0 border, 8px radius,
+        12px #64748B title, 24px bold #1A1A1A value, grey icon, 15px padding.
+      - Pressed/Active state: Solid status color background and border (2px),
+        white title text, white value text, white icon.
+      - Cursor: Qt.PointingHandCursor.
+      - Layout: [Icon] Title on top row, Value on bottom row.
+    """
+
+    clicked = pyqtSignal(str)
+
+    STATUS_CONFIG: dict[str, dict[str, str]] = {
+        "Pending": {"color": "#F57C00", "icon": "clock"},
+        "Processing": {"color": "#3B82F6", "icon": "refresh"},
+        "Paid": {"color": "#2E7D32", "icon": "check-circle"},
+        "In Progress": {"color": "#8B5CF6", "icon": "trending-up"},
+        "Ready": {"color": "#D4AF37", "icon": "package-check"},
+        "Delivered": {"color": "#1A1A1A", "icon": "truck"},
+        "Cancelled": {"color": "#C62828", "icon": "x-circle"},
+        # Payments Statuses
+        "Completed": {"color": "#2E7D32", "icon": "check-circle"},
+        "Verified": {"color": "#3B82F6", "icon": "shield-check"},
+        "Failed": {"color": "#C62828", "icon": "alert-circle"},
+        "Refunded": {"color": "#8B5CF6", "icon": "adjust"},
+        # Expense Categories
+        "Labor": {"color": "#3B82F6", "icon": "users"},
+        "Materials": {"color": "#2E7D32", "icon": "inventory"},
+        "Miscellaneous": {"color": "#8B5CF6", "icon": "adjust"},
+        "Utility": {"color": "#F57C00", "icon": "zap"},
+        "Other": {"color": "#64748B", "icon": "info"},
+    }
+
+    def __init__(self, status: str, value: int | str = 0,
+                 color: str | None = None, icon: str | None = None,
+                 parent=None) -> None:
+        super().__init__(parent)
+        self.status = status
+        self._value = value
+        self._is_active = False
+
+        cfg = self.STATUS_CONFIG.get(status, {"color": "#475569", "icon": "info"})
+        self.color = color or cfg["color"]
+        self.icon_name = icon or cfg["icon"]
+
+        self.setObjectName("StatusKpiCard")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setMinimumHeight(76)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(6)
+
+        # Top row: [Icon] Title
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(8)
+        top_row.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+        self.icon_label = QLabel()
+        self.icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.icon_label.setFixedSize(16, 16)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_row.addWidget(self.icon_label)
+
+        self.title_label = QLabel(self.status)
+        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        top_row.addWidget(self.title_label)
+        top_row.addStretch(1)
+
+        layout.addLayout(top_row)
+
+        # Bottom row: Value
+        self.value_label = QLabel(str(self._value))
+        self.value_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self.value_label)
+
+        self._update_appearance()
+
+    def _update_appearance(self) -> None:
+        from ui.icons import get_pixmap
+        if self._is_active:
+            self.setStyleSheet(f"""
+                QFrame#StatusKpiCard {{
+                    background-color: {self.color};
+                    border: 2px solid {self.color};
+                    border-radius: 8px;
+                }}
+            """)
+            self.title_label.setStyleSheet("color: #FFFFFF; font-size: 12px; font-weight: 600; background: transparent; border: none;")
+            self.value_label.setStyleSheet("color: #FFFFFF; font-size: 24px; font-weight: bold; background: transparent; border: none;")
+            self.icon_label.setStyleSheet("background: transparent; border: none;")
+            self.icon_label.setPixmap(get_pixmap(self.icon_name, color="#FFFFFF", size=16))
+        else:
+            self.setStyleSheet("""
+                QFrame#StatusKpiCard {
+                    background-color: #FFFFFF;
+                    border: 1px solid #E0E0E0;
+                    border-radius: 8px;
+                }
+                QFrame#StatusKpiCard:hover {
+                    border: 1px solid #CBD5E1;
+                    background-color: #F8FAFC;
+                }
+            """)
+            self.title_label.setStyleSheet("color: #64748B; font-size: 12px; font-weight: 500; background: transparent; border: none;")
+            self.value_label.setStyleSheet("color: #1A1A1A; font-size: 24px; font-weight: bold; background: transparent; border: none;")
+            self.icon_label.setStyleSheet("background: transparent; border: none;")
+            self.icon_label.setPixmap(get_pixmap(self.icon_name, color="#64748B", size=16))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.status)
+        super().mousePressEvent(event)
+
+    def set_value(self, value: int | str) -> None:
+        self._value = value
+        self.value_label.setText(str(value))
+
+    def value(self) -> int | str:
+        return self._value
+
+    def set_active(self, active: bool) -> None:
+        if self._is_active != active:
+            self._is_active = bool(active)
+            self._update_appearance()
+
+    def is_active(self) -> bool:
+        return self._is_active
 
 
 # -- Standalone Preview / Demo -----------------------------------------
