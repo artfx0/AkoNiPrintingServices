@@ -287,10 +287,26 @@ class MainWindow(QMainWindow):
     # -- Interactive Navigation Handler --------------------------------
     def navigate_to_tab(self, tab_name: str) -> None:
         """Switch active page by module label (e.g. from Dashboard quick-links)."""
+        filter_param = None
+        if ":" in tab_name:
+            tab_name, filter_param = tab_name.split(":", 1)
+
         labels = ADMIN_NAV if self._is_admin else STAFF_NAV
         if tab_name in labels:
             idx = labels.index(tab_name)
             self.nav.setCurrentRow(idx)
+
+            if tab_name == "Orders" and filter_param and hasattr(self, "order_page"):
+                self.order_page._active_status = filter_param
+                self.order_page._sync_status_ui()
+                self.order_page._load_table_data()
+            elif tab_name == "Inventory" and filter_param == "LOW" and hasattr(self, "inventory_page"):
+                if hasattr(self.inventory_page, "tabs"):
+                    self.inventory_page.tabs.setCurrentIndex(0)
+                if hasattr(self.inventory_page, "stock_filter"):
+                    idx_low = self.inventory_page.stock_filter.findData("LOW")
+                    if idx_low >= 0:
+                        self.inventory_page.stock_filter.setCurrentIndex(idx_low)
 
     def _handle_customer_new_order(self, customer_id: int) -> None:
         """Switch to Orders module and open NewOrderDialog with customer pre-selected."""

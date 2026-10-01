@@ -186,6 +186,18 @@ class DashboardWidget(QWidget):
             grid.addWidget(card, 0, i)
             self._cards[key] = card
 
+        # Map each summary card to its designated module
+        card_targets = {
+            "sales": "Reports",
+            "expenses": "Expenses",
+            "pending": "Orders:Pending",
+            "low": "Inventory:LOW",
+        }
+        for key, card in self._cards.items():
+            target = card_targets.get(key)
+            if target:
+                card.clicked.connect(lambda t=target: self.navigation_requested.emit(t))
+
         self.layout.addLayout(grid)
 
     # -- 3. Admin 2x2 Grid of Panels -----------------------------------
@@ -325,6 +337,7 @@ class DashboardWidget(QWidget):
             conn.close()
 
     def _recent_orders(self, limit: int = 5) -> list[dict]:
+        """Fetch orders needing operational attention (excludes Paid, Delivered, Cancelled)."""
         conn = self._conn()
         try:
             cur = conn.cursor(dictionary=True)
@@ -333,7 +346,16 @@ class DashboardWidget(QWidget):
                 " o.total_amount, o.status, o.expected_delivery_date, o.order_type"
                 " FROM customer_orders o"
                 " JOIN customers c ON c.customer_id = o.customer_id"
-                " ORDER BY o.order_date DESC LIMIT %s", (limit,)
+                " WHERE o.status IN ('Pending', 'Processing', 'In Progress', 'Ready')"
+                " ORDER BY ("
+                "   CASE o.status"
+                "     WHEN 'Pending' THEN 1"
+                "     WHEN 'Processing' THEN 2"
+                "     WHEN 'In Progress' THEN 3"
+                "     WHEN 'Ready' THEN 4"
+                "     ELSE 5"
+                "   END"
+                " ), o.order_date DESC LIMIT %s", (limit,)
             )
             return list(cur.fetchall())
         except Exception:
@@ -342,14 +364,16 @@ class DashboardWidget(QWidget):
             conn.close()
 
     def _inventory_status_list(self, limit: int = 5) -> list[dict]:
+        """Fetch materials in need of attention (strictly low stock / out of stock)."""
         conn = self._conn()
         try:
             cur = conn.cursor(dictionary=True)
             cur.execute(
                 "SELECT material_id, material_name, unit_of_measure, current_stock_qty, low_stock_threshold,"
-                " (current_stock_qty <= low_stock_threshold) AS is_low"
+                " 1 AS is_low"
                 " FROM materials"
-                " ORDER BY is_low DESC, current_stock_qty ASC LIMIT %s", (limit,)
+                " WHERE current_stock_qty <= low_stock_threshold"
+                " ORDER BY current_stock_qty ASC, material_name ASC LIMIT %s", (limit,)
             )
             return list(cur.fetchall())
         except Exception:
@@ -519,8 +543,8 @@ class DashboardWidget(QWidget):
                 item.widget().deleteLater()
 
         if not orders:
-            empty_lbl = QLabel("No active orders found.")
-            empty_lbl.setStyleSheet("color: #94A3B8; font-size: 13px; padding: 20px;")
+            empty_lbl = QLabel("All caught up! No orders currently require attention.")
+            empty_lbl.setStyleSheet("color: #64748B; font-size: 13px; font-weight: 500; padding: 24px;")
             empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.orders_list_layout.addWidget(empty_lbl)
             return
@@ -528,6 +552,9 @@ class DashboardWidget(QWidget):
         for o in orders:
             row = QFrame()
             row.setObjectName("DashboardListItem")
+            row.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.mousePressEvent = lambda _, oid=o.get("order_id"): self.navigation_requested.emit("Orders")
+
             row_lay = QHBoxLayout(row)
             row_lay.setContentsMargins(12, 10, 12, 10)
             row_lay.setSpacing(12)
@@ -585,8 +612,8 @@ class DashboardWidget(QWidget):
                 item.widget().deleteLater()
 
         if not materials:
-            empty_lbl = QLabel("No materials recorded.")
-            empty_lbl.setStyleSheet("color: #94A3B8; font-size: 13px; padding: 20px;")
+            empty_lbl = QLabel("All materials well-stocked. No low stock alerts.")
+            empty_lbl.setStyleSheet("color: #10B981; font-size: 13px; font-weight: 500; padding: 24px;")
             empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.inv_list_layout.addWidget(empty_lbl)
             return
@@ -594,6 +621,9 @@ class DashboardWidget(QWidget):
         for m in materials:
             row = QFrame()
             row.setObjectName("DashboardListItem")
+            row.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.mousePressEvent = lambda _, mid=m.get("material_id"): self.navigation_requested.emit("Inventory:LOW")
+
             row_lay = QHBoxLayout(row)
             row_lay.setContentsMargins(12, 10, 12, 10)
             row_lay.setSpacing(12)

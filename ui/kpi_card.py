@@ -46,6 +46,8 @@ def _repolish(widget) -> None:
 class KpiCard(QFrame):
     """Modern SaaS KPI metric card matching the reference design."""
 
+    clicked = pyqtSignal()
+
     def __init__(self, title: str,
                  icon: str | QIcon | QPixmap | QStyle.StandardPixmap | None = None,
                  value: str = "—",
@@ -59,6 +61,7 @@ class KpiCard(QFrame):
         self.setMinimumHeight(130)
         self.setMinimumWidth(200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
@@ -72,6 +75,7 @@ class KpiCard(QFrame):
         self.title_label = QLabel(title)
         self.title_label.setObjectName("KpiTitle")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         top.addWidget(self.title_label, 1)
 
         self._icon_theme = icon_theme
@@ -80,6 +84,7 @@ class KpiCard(QFrame):
         self.icon_label.setProperty("theme", icon_theme)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_label.setFixedSize(34, 34)
+        self.icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         top.addWidget(self.icon_label)
         layout.addLayout(top)
 
@@ -87,12 +92,14 @@ class KpiCard(QFrame):
         self.value_label = QLabel(value)
         self.value_label.setObjectName("KpiValue")
         self.value_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.value_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         layout.addWidget(self.value_label)
 
         # Bottom row: Subtitle showing a comparison (green / red / grey text)
         self.subtitle_label = QLabel(subtitle)
         self.subtitle_label.setObjectName("KpiSubtitle")
         self.subtitle_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.subtitle_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         layout.addWidget(self.subtitle_label)
         layout.addStretch(1)
 
@@ -100,6 +107,11 @@ class KpiCard(QFrame):
         self.set_icon(icon)
         self.set_subtitle(subtitle, subtitle_tone)
         _apply_card_shadow(self)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
     # -- Content setters & getters -------------------------------------
     def set_icon(self, icon: str | QIcon | QPixmap | QStyle.StandardPixmap | None) -> None:

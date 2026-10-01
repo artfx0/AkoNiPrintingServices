@@ -232,8 +232,18 @@ QFrame#KpiCard {
     border-radius: 12px;
 }
 
+QFrame#KpiCard:hover {
+    border-color: #CBD5E1;
+    background-color: #F8FAFC;
+}
+
 QFrame#KpiCard[alert="true"] {
     border: 2px solid #EF4444;
+}
+
+QFrame#KpiCard[alert="true"]:hover {
+    border: 2px solid #DC2626;
+    background-color: #FEF2F2;
 }
 
 QLabel#KpiTitle {
