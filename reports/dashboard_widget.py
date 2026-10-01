@@ -663,7 +663,7 @@ class DashboardWidget(QWidget):
             qty_lbl.setStyleSheet(f"font-weight: bold; font-size: 13px; color: {'#DC2626' if is_low else '#0F172A'};")
             qty_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
-            status_pill = QLabel("Low Stock" if is_low else "Healthy")
+            status_pill = QLabel("Low Stock" if is_low else "In Stock")
             status_pill.setObjectName("StockPill")
             status_pill.setProperty("alert", "true" if is_low else "false")
             status_pill.setAlignment(Qt.AlignmentFlag.AlignCenter)

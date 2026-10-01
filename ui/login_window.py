@@ -326,13 +326,13 @@ class LoginWindow(QDialog):
         self.username_edit.returnPressed.connect(self.password_edit.setFocus)
         self.password_edit.returnPressed.connect(self.try_login)
 
-        # Remember / Credentials row
+        # # Remember / Credentials row
         options_row = QHBoxLayout()
-        self.remember_box = QCheckBox("Keep me signed in")
-        self.remember_box.setChecked(True)
-        self.remember_box.setStyleSheet("color: #64748B; font-size: 12px;")
-        options_row.addWidget(self.remember_box)
-        options_row.addStretch(1)
+        # self.remember_box = QCheckBox("Keep me signed in")
+        # self.remember_box.setChecked(True)
+        # self.remember_box.setStyleSheet("color: #64748B; font-size: 12px;")
+        # options_row.addWidget(self.remember_box)
+        # options_row.addStretch(1)
 
         role_hint = QLabel("Admin & Staff Access")
         role_hint.setStyleSheet("color: #94A3B8; font-size: 11px;")
@@ -340,7 +340,7 @@ class LoginWindow(QDialog):
         lay.addLayout(options_row)
 
         # Primary Sign In Button (HCI prominent call-to-action)
-        self.login_btn = QPushButton("Sign In to Dashboard")
+        self.login_btn = QPushButton("Sign In")
         self.login_btn.setIcon(get_icon("arrow-right", color="#0F172A", size=16))
         self.login_btn.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.login_btn.setFixedHeight(44)
