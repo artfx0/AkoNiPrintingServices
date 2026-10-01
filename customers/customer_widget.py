@@ -31,7 +31,7 @@ from database.database import get_connection
 from ui.icons import get_icon, get_action_icon, get_pixmap
 
 _CUSTOMER_HEADERS = [
-    "ID", "First Name", "Last Name", "Contact", "Email", "Address", "Date Added"
+    "ID", "First Name", "Last Name", "Contact", "Email", "Address", "Date Added", "Status"
 ]
 
 _ORDER_HISTORY_HEADERS = [
@@ -390,7 +390,82 @@ class CustomerWidget(QWidget):
         header_lay.addWidget(sub)
         layout.addLayout(header_lay)
 
-        # 2. Action Toolbar (Search on left, actions on right)
+        # 2. Inline Add Customer Card (Directly above search bar, no pop-up dialog)
+        form_card = QFrame()
+        form_card.setObjectName("ModuleCardContainer")
+        form_lay = QVBoxLayout(form_card)
+        form_lay.setContentsMargins(18, 14, 18, 14)
+        form_lay.setSpacing(10)
+
+        form_header = QHBoxLayout()
+        form_header.setSpacing(8)
+        form_title = QLabel("Add New Customer")
+        form_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #0F172A;")
+        form_subtitle = QLabel("— Enter details to register customer directly")
+        form_subtitle.setStyleSheet("font-size: 12px; color: #64748B;")
+        form_header.addWidget(form_title)
+        form_header.addWidget(form_subtitle)
+        form_header.addStretch(1)
+        form_lay.addLayout(form_header)
+
+        # Row 1: Name, Contact, Email
+        row1 = QHBoxLayout()
+        row1.setSpacing(10)
+
+        self.input_first_name = QLineEdit()
+        self.input_first_name.setObjectName("CustomerFormInput")
+        self.input_first_name.setPlaceholderText("First Name *")
+        self.input_first_name.setFixedHeight(36)
+
+        self.input_last_name = QLineEdit()
+        self.input_last_name.setObjectName("CustomerFormInput")
+        self.input_last_name.setPlaceholderText("Last Name *")
+        self.input_last_name.setFixedHeight(36)
+
+        self.input_contact = QLineEdit()
+        self.input_contact.setObjectName("CustomerFormInput")
+        self.input_contact.setPlaceholderText("Contact (09XXXXXXXXX) *")
+        self.input_contact.setFixedHeight(36)
+
+        self.input_email = QLineEdit()
+        self.input_email.setObjectName("CustomerFormInput")
+        self.input_email.setPlaceholderText("Email Address * (name@example.com)")
+        self.input_email.setFixedHeight(36)
+
+        row1.addWidget(self.input_first_name, 1)
+        row1.addWidget(self.input_last_name, 1)
+        row1.addWidget(self.input_contact, 1)
+        row1.addWidget(self.input_email, 1)
+        form_lay.addLayout(row1)
+
+        # Row 2: Delivery Address + Add Button + Clear Button
+        row2 = QHBoxLayout()
+        row2.setSpacing(10)
+
+        self.input_address = QLineEdit()
+        self.input_address.setObjectName("CustomerFormInput")
+        self.input_address.setPlaceholderText("Delivery Address (Street, Barangay, City, Province)")
+        self.input_address.setFixedHeight(36)
+        row2.addWidget(self.input_address, 1)
+
+        self.add_customer_btn = QPushButton("Add Customer")
+        self.add_customer_btn.setIcon(get_action_icon("plus", "primary", 15))
+        self.add_customer_btn.setFixedHeight(36)
+        self.add_customer_btn.setFixedWidth(130)
+        self.add_customer_btn.clicked.connect(self.add_customer)
+        row2.addWidget(self.add_customer_btn)
+
+        self.clear_form_btn = QPushButton("Clear")
+        self.clear_form_btn.setObjectName("SecondaryBtn")
+        self.clear_form_btn.setFixedHeight(36)
+        self.clear_form_btn.setFixedWidth(80)
+        self.clear_form_btn.clicked.connect(self.clear_inputs)
+        row2.addWidget(self.clear_form_btn)
+
+        form_lay.addLayout(row2)
+        layout.addWidget(form_card)
+
+        # 3. Action Toolbar (Search on left, actions on right)
         toolbar = QHBoxLayout()
         toolbar.setSpacing(12)
 
@@ -427,14 +502,11 @@ class CustomerWidget(QWidget):
         self.delete_btn.clicked.connect(self.delete_customer)
         toolbar.addWidget(self.delete_btn)
 
-        self.add_btn = QPushButton("Add Customer")
-        self.add_btn.setIcon(get_action_icon("plus", "primary", 16))
-        self.add_btn.clicked.connect(self.add_customer)
-        toolbar.addWidget(self.add_btn)
+        self.add_btn = self.add_customer_btn
 
         layout.addLayout(toolbar)
 
-        # 3. Card Container wrapping the Table & Empty State Label
+        # 4. Card Container wrapping the Table & Empty State Label
         card = QFrame()
         card.setObjectName("ModuleCardContainer")
         card_lay = QVBoxLayout(card)
@@ -458,12 +530,16 @@ class CustomerWidget(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.setStyleSheet("alternate-background-color: #F9F9F9; background-color: #FFFFFF;")
+
+        # Hide ID column in system so it does not display in the UI
+        self.table.setColumnHidden(0, True)
+
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(42)
         self.table.doubleClicked.connect(self.view_customer_details)
 
         card_lay.addWidget(self.table)
@@ -483,6 +559,104 @@ class CustomerWidget(QWidget):
         except (AttributeError, ValueError):
             return None
 
+    def _show_validation_error(self, message: str) -> None:
+        """Display red error text in QMessageBox for input validation."""
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle("Validation Error")
+        msg.setText(f"<div style='color: #DC2626; font-size: 13px; font-weight: bold;'>{message}</div>")
+        msg.setStyleSheet("""
+            QMessageBox {
+                background-color: #FFFFFF;
+            }
+            QLabel {
+                color: #DC2626;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #0F172A;
+                color: #FFFFFF;
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-weight: bold;
+            }
+        """)
+        msg.exec()
+
+    def clear_inputs(self) -> None:
+        """Clear all inputs in the inline customer registration form."""
+        self.input_first_name.clear()
+        self.input_last_name.clear()
+        self.input_contact.clear()
+        self.input_email.clear()
+        self.input_address.clear()
+
+    def _create_status_btn(self, cid: int, is_active: bool, customer_name: str) -> QWidget:
+        """Create interactive Active / Inactive pill button for table row."""
+        container = QWidget()
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        btn = QPushButton("Active" if is_active else "Inactive")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFixedHeight(26)
+        btn.setFixedWidth(84)
+
+        if is_active:
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #DCFCE7;
+                    color: #15803D;
+                    border: 1px solid #86EFAC;
+                    border-radius: 13px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    padding: 2px 8px;
+                }
+                QPushButton:hover {
+                    background-color: #BBF7D0;
+                    border: 1px solid #4ADE80;
+                    color: #14532D;
+                }
+            """)
+            btn.setToolTip(f"Click to set {customer_name} to Inactive")
+        else:
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #F1F5F9;
+                    color: #64748B;
+                    border: 1px solid #CBD5E1;
+                    border-radius: 13px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    padding: 2px 8px;
+                }
+                QPushButton:hover {
+                    background-color: #E2E8F0;
+                    border: 1px solid #94A3B8;
+                    color: #334155;
+                }
+            """)
+            btn.setToolTip(f"Click to set {customer_name} to Active")
+
+        btn.clicked.connect(lambda checked, c=cid, a=is_active, n=customer_name: self._toggle_customer_status(c, a, n))
+        lay.addWidget(btn)
+        return container
+
+    def _toggle_customer_status(self, cid: int, current_active: bool, customer_name: str) -> None:
+        new_status = not current_active
+        action_word = "deactivate" if current_active else "activate"
+
+        conn = self._conn()
+        try:
+            CustomerManager(conn).set_active(cid, new_status)
+            self.refresh()
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Error", f"Failed to {action_word} customer:\n{exc}")
+        finally:
+            conn.close()
+
     def refresh(self) -> None:
         """Query customers sorted newest first (SELECT * FROM Customers ORDER BY created_at DESC)."""
         conn = self._conn()
@@ -495,7 +669,7 @@ class CustomerWidget(QWidget):
                 if needle:
                     self.empty_label.setText(f"No customers found matching '{needle}'.")
                 else:
-                    self.empty_label.setText("No customers registered yet. Click '+ Add Customer' to create one.")
+                    self.empty_label.setText("No customers registered yet. Fill the form above to add one.")
                 self.empty_label.setVisible(True)
                 self.table.setRowCount(0)
             else:
@@ -511,6 +685,7 @@ class CustomerWidget(QWidget):
                     email = str(row.get("email_address") or "—")
                     addr = str(row.get("address") or "—")
                     date_str = str(row.get("created_at") or "")[:10] or "—"
+                    is_active = bool(row.get("is_active", True))
 
                     vals = [
                         f"#{cid}",
@@ -524,9 +699,12 @@ class CustomerWidget(QWidget):
 
                     for c, val in enumerate(vals):
                         item = QTableWidgetItem(val)
-                        if c in (0, 6):
+                        if c in (0, 3, 6):
                             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(r, c, item)
+
+                    # Col 7: Status button (Active / Inactive)
+                    self.table.setCellWidget(r, 7, self._create_status_btn(cid, is_active, f"{first} {last}"))
 
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", f"Failed to load customers:\n{exc}")
@@ -534,23 +712,44 @@ class CustomerWidget(QWidget):
             conn.close()
 
     def add_customer(self) -> None:
-        """Add New Customer workflow with validation and refresh."""
-        dlg = CustomerDialog(self)
-        if dlg.exec():
-            vals = dlg.values()
-            conn = self._conn()
-            try:
-                CustomerManager(conn).create_customer(
-                    vals["first_name"], vals["last_name"],
-                    vals["contact_number"], vals["email_address"], vals["address"])
-                QMessageBox.information(
-                    self, "Customer Added",
-                    f"Customer '{vals['first_name']} {vals['last_name']}' was added successfully.")
-                self.refresh()
-            except Exception as exc:  # noqa: BLE001
-                QMessageBox.critical(self, "Error", f"Failed to add customer:\n{exc}")
-            finally:
-                conn.close()
+        """Add New Customer directly from the inline form fields without a pop-up dialog."""
+        first = self.input_first_name.text().strip()
+        last = self.input_last_name.text().strip()
+        contact = self.input_contact.text().strip()
+        email = self.input_email.text().strip()
+        address = self.input_address.text().strip()
+
+        # 1. First/Last Name cannot be empty
+        if not first or not last:
+            self._show_validation_error("First Name and Last Name cannot be empty.")
+            return
+
+        # 2. Contact Number must be 11 digits (PH format)
+        cleaned_contact = re.sub(r"\D", "", contact)
+        if len(cleaned_contact) != 11 or not cleaned_contact.startswith("09"):
+            self._show_validation_error("Contact Number must be 11 digits in Philippine format (e.g. 09XXXXXXXXX).")
+            return
+
+        # 3. Email must contain "@" and "."
+        if not email or "@" not in email or "." not in email:
+            self._show_validation_error("Email must contain '@' and '.' (e.g. customer@example.com).")
+            return
+
+        conn = self._conn()
+        try:
+            CustomerManager(conn).create_customer(
+                first, last, cleaned_contact, email, address, is_active=True
+            )
+            self.clear_inputs()
+            self.refresh()
+            QMessageBox.information(
+                self, "Customer Added",
+                f"Customer '{first} {last}' was added successfully."
+            )
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Error", f"Failed to add customer:\n{exc}")
+        finally:
+            conn.close()
 
     def edit_customer(self) -> None:
         """Edit Selected Customer workflow with pre-filled fields."""

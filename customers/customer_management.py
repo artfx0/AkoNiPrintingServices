@@ -9,18 +9,19 @@ class CustomerManager:
         self.conn = conn
 
     def create_customer(self, first_name: str, last_name: str, contact_number: str = "",
-                        email_address: str = "", address: str = "") -> int:
+                        email_address: str = "", address: str = "", is_active: bool = True) -> int:
         if not first_name or not last_name:
             raise ValueError("first_name and last_name are required")
         cursor = self.conn.cursor()
         try:
             cursor.execute(
-                "INSERT INTO customers (first_name, last_name, contact_number, email_address, address)"
-                " VALUES (%s, %s, %s, %s, %s)",
+                "INSERT INTO customers (first_name, last_name, contact_number, email_address, address, is_active)"
+                " VALUES (%s, %s, %s, %s, %s, %s)",
                 (first_name.strip(), last_name.strip(),
                  (contact_number or "").strip() or None,
                  (email_address or "").strip() or None,
-                 (address or "").strip() or None),
+                 (address or "").strip() or None,
+                 bool(is_active)),
             )
             self.conn.commit()
             return cursor.lastrowid
@@ -41,7 +42,10 @@ class CustomerManager:
                 )
             else:
                 cursor.execute("SELECT * FROM customers ORDER BY created_at DESC")
-            return list(cursor.fetchall())
+            rows = list(cursor.fetchall())
+            for r in rows:
+                r["is_active"] = bool(r.get("is_active", 1) if r.get("is_active") is not None else 1)
+            return rows
         finally:
             cursor.close()
 
@@ -49,23 +53,38 @@ class CustomerManager:
         cursor = self.conn.cursor(dictionary=True)
         try:
             cursor.execute("SELECT * FROM customers WHERE customer_id = %s", (customer_id,))
-            return cursor.fetchone()
+            row = cursor.fetchone()
+            if row:
+                row["is_active"] = bool(row.get("is_active", 1) if row.get("is_active") is not None else 1)
+            return row
         finally:
             cursor.close()
 
     def update_customer(self, customer_id: int, **fields) -> None:
-        allowed = {"first_name", "last_name", "contact_number", "email_address", "address"}
+        allowed = {"first_name", "last_name", "contact_number", "email_address", "address", "is_active"}
         sets, params = [], []
         for key, value in fields.items():
             if key in allowed and value is not None:
                 sets.append(f"{key} = %s")
-                params.append(value.strip() if isinstance(value, str) else value)
+                if key == "is_active":
+                    params.append(bool(value))
+                else:
+                    params.append(value.strip() if isinstance(value, str) else value)
         if not sets:
             return
         params.append(customer_id)
         cursor = self.conn.cursor()
         try:
             cursor.execute(f"UPDATE customers SET {', '.join(sets)} WHERE customer_id = %s", params)
+            self.conn.commit()
+        finally:
+            cursor.close()
+
+    def set_active(self, customer_id: int, is_active: bool) -> None:
+        """Toggle or set customer active status."""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("UPDATE customers SET is_active = %s WHERE customer_id = %s", (bool(is_active), customer_id))
             self.conn.commit()
         finally:
             cursor.close()

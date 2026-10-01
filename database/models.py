@@ -40,6 +40,7 @@ CREATE_TABLES_SQL = [
         contact_number VARCHAR(20) NULL,
         email_address VARCHAR(100) NULL,
         address VARCHAR(255) NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_customer_name (last_name, first_name)
     ) ENGINE=InnoDB
