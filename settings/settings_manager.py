@@ -28,6 +28,13 @@ _DEFAULT_PRODUCTS = [
     {"name": "Chocolate Box", "status": "Active"},
 ]
 
+_DEFAULT_PAYMENT_METHODS = [
+    {"name": "GCash", "status": "Active"},
+    {"name": "Bank Transfer", "status": "Active"},
+]
+
+_DEFAULT_PAYMENT_ACCOUNTS: list[dict[str, str]] = []
+
 
 class SettingsManager:
     """Handles reading and writing business configuration."""
@@ -79,3 +86,58 @@ class SettingsManager:
         data["product_references"] = products
         with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
+
+    @classmethod
+    def load_payment_methods(cls) -> list[dict[str, str]]:
+        if _SETTINGS_FILE.exists():
+            try:
+                with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if "payment_methods" in data and isinstance(data["payment_methods"], list):
+                        return list(data["payment_methods"])
+            except Exception:
+                pass
+        return list(_DEFAULT_PAYMENT_METHODS)
+
+    @classmethod
+    def save_payment_methods(cls, methods: list[dict[str, str]]) -> None:
+        if _SETTINGS_FILE.exists():
+            try:
+                with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = dict(_DEFAULT_BUSINESS_INFO)
+        else:
+            data = dict(_DEFAULT_BUSINESS_INFO)
+
+        data["payment_methods"] = methods
+        with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+
+    @classmethod
+    def load_payment_accounts(cls) -> list[dict[str, str]]:
+        if _SETTINGS_FILE.exists():
+            try:
+                with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if "payment_accounts" in data and isinstance(data["payment_accounts"], list):
+                        return list(data["payment_accounts"])
+            except Exception:
+                pass
+        return list(_DEFAULT_PAYMENT_ACCOUNTS)
+
+    @classmethod
+    def save_payment_accounts(cls, accounts: list[dict[str, str]]) -> None:
+        if _SETTINGS_FILE.exists():
+            try:
+                with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = dict(_DEFAULT_BUSINESS_INFO)
+        else:
+            data = dict(_DEFAULT_BUSINESS_INFO)
+
+        data["payment_accounts"] = accounts
+        with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+

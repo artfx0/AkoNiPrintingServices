@@ -24,9 +24,9 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QTextEdit, QPushButton, QTabWidget, QFrame, QScrollArea,
     QFormLayout, QMessageBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QInputDialog,
+    QHeaderView, QAbstractItemView, QInputDialog, QComboBox,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent
 
 from settings.settings_manager import SettingsManager
 from ui.icons import get_icon, get_action_icon, get_pixmap
@@ -76,11 +76,7 @@ class SettingsWidget(QWidget):
         # Add tabs
         self.general_tab = self._create_general_tab()
         self.sales_tab = self._create_sales_tab()
-        self.payments_tab = self._create_placeholder_tab(
-            title="Payment Methods & Accounts",
-            icon_name="payments",
-            description="Configure accepted payment methods (GCash, BDO, Cash), merchant numbers, and receipt templates."
-        )
+        self.payments_tab = self._create_payments_tab()
         self.expenses_tab = self._create_placeholder_tab(
             title="Expense Categories & Thresholds",
             icon_name="expenses",
@@ -459,6 +455,413 @@ class SettingsWidget(QWidget):
         self.products[idx]["status"] = new_status
         SettingsManager.save_product_references(self.products)
         self._load_products()
+
+    # -----------------------------------------------------------------------
+    # Tab 3: Payments (Payment Methods & Accounts Sections)
+    # -----------------------------------------------------------------------
+    def _create_payments_tab(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background-color: transparent;")
+
+        container = QWidget()
+        container.setStyleSheet("background-color: transparent;")
+        c_lay = QVBoxLayout(container)
+        c_lay.setContentsMargins(16, 16, 16, 16)
+        c_lay.setSpacing(18)
+
+        # ===================================================================
+        # Section 1: Payment Methods Section
+        # ===================================================================
+        methods_card = QFrame()
+        methods_card.setObjectName("ModuleCardContainer")
+        methods_card.setStyleSheet(
+            "QFrame#ModuleCardContainer { background-color: #FFFFFF; border: 1px solid #E2E8F0; "
+            "border-radius: 12px; }"
+        )
+        m_lay = QVBoxLayout(methods_card)
+        m_lay.setContentsMargins(22, 18, 22, 18)
+        m_lay.setSpacing(14)
+
+        # Header
+        m_header = QVBoxLayout()
+        m_header.setSpacing(2)
+        m_title = QLabel("Payment Methods")
+        m_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #0F172A;")
+        m_sub = QLabel("Supported customer remittance channels and tender options accepted at checkout.")
+        m_sub.setStyleSheet("font-size: 12px; color: #64748B;")
+        m_header.addWidget(m_title)
+        m_header.addWidget(m_sub)
+        m_lay.addLayout(m_header)
+
+        # Separator line
+        sep1 = QFrame()
+        sep1.setObjectName("SidebarDivider")
+        sep1.setFixedHeight(1)
+        m_lay.addWidget(sep1)
+
+        # Table: Name, Status, Actions
+        self.methods_table = QTableWidget()
+        self.methods_table.setColumnCount(3)
+        self.methods_table.setHorizontalHeaderLabels(["Name", "Status", "Actions"])
+        self.methods_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.methods_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.methods_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.methods_table.verticalHeader().setVisible(False)
+        self.methods_table.verticalHeader().setDefaultSectionSize(42)
+        self.methods_table.setAlternatingRowColors(True)
+
+        m_hdr = self.methods_table.horizontalHeader()
+        m_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        m_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        m_hdr.resizeSection(1, 140)
+        m_hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        m_hdr.resizeSection(2, 210)
+
+        m_lay.addWidget(self.methods_table)
+
+        # Below Table: Input field + Solid gold 'Add' button
+        m_add_box = QHBoxLayout()
+        m_add_box.setSpacing(10)
+        m_add_box.setContentsMargins(0, 4, 0, 0)
+
+        self.new_method_input = QLineEdit()
+        self.new_method_input.setPlaceholderText("New payment method name")
+        self.new_method_input.setFixedHeight(36)
+        self.new_method_input.returnPressed.connect(self._add_payment_method)
+        m_add_box.addWidget(self.new_method_input, 1)
+
+        self.add_method_btn = QPushButton("Add")
+        self.add_method_btn.setIcon(get_action_icon("plus", "primary", 15))
+        self.add_method_btn.setFixedHeight(36)
+        self.add_method_btn.setFixedWidth(90)
+        self.add_method_btn.clicked.connect(self._add_payment_method)
+        m_add_box.addWidget(self.add_method_btn)
+
+        m_lay.addLayout(m_add_box)
+        c_lay.addWidget(methods_card)
+
+        # ===================================================================
+        # Section 2: Payment Accounts Section
+        # ===================================================================
+        accounts_card = QFrame()
+        accounts_card.setObjectName("ModuleCardContainer")
+        accounts_card.setStyleSheet(
+            "QFrame#ModuleCardContainer { background-color: #FFFFFF; border: 1px solid #E2E8F0; "
+            "border-radius: 12px; }"
+        )
+        a_lay = QVBoxLayout(accounts_card)
+        a_lay.setContentsMargins(22, 18, 22, 18)
+        a_lay.setSpacing(14)
+
+        # Header
+        a_header = QVBoxLayout()
+        a_header.setSpacing(2)
+        a_title = QLabel("Payment Accounts")
+        a_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #0F172A;")
+        a_sub = QLabel("Configured receiving accounts, merchant details, and automated invoice routing.")
+        a_sub.setStyleSheet("font-size: 12px; color: #64748B;")
+        a_header.addWidget(a_title)
+        a_header.addWidget(a_sub)
+        a_lay.addLayout(a_header)
+
+        # Separator line
+        sep2 = QFrame()
+        sep2.setObjectName("SidebarDivider")
+        sep2.setFixedHeight(1)
+        a_lay.addWidget(sep2)
+
+        # Table: Method, Label, Account Name, Number/Details, Invoice, Order, Status, Actions
+        self.accounts_table = QTableWidget()
+        acc_headers = ["Method", "Label", "Account Name", "Number/Details", "Invoice", "Order", "Status", "Actions"]
+        self.accounts_table.setColumnCount(len(acc_headers))
+        self.accounts_table.setHorizontalHeaderLabels(acc_headers)
+        self.accounts_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.accounts_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.accounts_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.accounts_table.verticalHeader().setVisible(False)
+        self.accounts_table.verticalHeader().setDefaultSectionSize(42)
+        self.accounts_table.setAlternatingRowColors(True)
+
+        a_hdr = self.accounts_table.horizontalHeader()
+        a_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        a_hdr.resizeSection(0, 110)
+        a_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        a_hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        a_hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        a_hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        a_hdr.resizeSection(4, 75)
+        a_hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        a_hdr.resizeSection(5, 75)
+        a_hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        a_hdr.resizeSection(6, 95)
+        a_hdr.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
+        a_hdr.resizeSection(7, 110)
+
+        self.accounts_table.setFixedHeight(120)
+
+        # Empty table placeholder: "No payment accounts yet" in light gray
+        self.no_accounts_label = QLabel("No payment accounts yet", self.accounts_table.viewport())
+        self.no_accounts_label.setObjectName("NoAccountsPlaceholder")
+        self.no_accounts_label.setStyleSheet("color: #94A3B8; font-size: 13px; font-style: italic; background: transparent;")
+        self.no_accounts_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.accounts_table.viewport().installEventFilter(self)
+
+        a_lay.addWidget(self.accounts_table)
+
+        # Form below the empty table
+        form_box = QVBoxLayout()
+        form_box.setSpacing(10)
+        form_box.setContentsMargins(0, 8, 0, 0)
+
+        form_subhead = QLabel("Add New Payment Account")
+        form_subhead.setStyleSheet("font-size: 13px; font-weight: bold; color: #0F172A;")
+        form_box.addWidget(form_subhead)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+        form.setVerticalSpacing(10)
+        form.setHorizontalSpacing(18)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        def make_label(text: str) -> QLabel:
+            lbl = QLabel(text)
+            lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #334155;")
+            return lbl
+
+        # 1. Dropdown for 'Payment Method'
+        self.account_method_combo = QComboBox()
+        self.account_method_combo.setFixedHeight(34)
+        form.addRow(make_label("Payment Method *:"), self.account_method_combo)
+
+        # 2. Text input for 'Display Label'
+        self.account_label_input = QLineEdit()
+        self.account_label_input.setPlaceholderText("Display Label (e.g. Primary GCash / Store QR)")
+        self.account_label_input.setFixedHeight(34)
+        form.addRow(make_label("Display Label *:"), self.account_label_input)
+
+        # 3. Text input for 'Account Name'
+        self.account_name_input = QLineEdit()
+        self.account_name_input.setPlaceholderText("Account Name (e.g. Juan Dela Cruz / AkoNi Printing)")
+        self.account_name_input.setFixedHeight(34)
+        form.addRow(make_label("Account Name *:"), self.account_name_input)
+
+        form_box.addLayout(form)
+
+        # Action button to save new account
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 4, 0, 0)
+
+        self.add_account_btn = QPushButton("Add Account")
+        self.add_account_btn.setIcon(get_action_icon("plus", "primary", 15))
+        self.add_account_btn.setFixedHeight(34)
+        self.add_account_btn.setFixedWidth(130)
+        self.add_account_btn.clicked.connect(self._add_payment_account)
+        btn_row.addWidget(self.add_account_btn)
+        btn_row.addStretch(1)
+
+        form_box.addLayout(btn_row)
+        a_lay.addLayout(form_box)
+
+        c_lay.addWidget(accounts_card)
+        c_lay.addStretch(1)
+
+        scroll.setWidget(container)
+
+        # Populate tables
+        self._load_payment_methods()
+        self._load_payment_accounts()
+
+        return scroll
+
+    def eventFilter(self, watched, event):
+        """Keep empty table placeholder label centered over viewport."""
+        if hasattr(self, "accounts_table") and watched == self.accounts_table.viewport():
+            if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+                if hasattr(self, "no_accounts_label"):
+                    self.no_accounts_label.resize(self.accounts_table.viewport().size())
+        return super().eventFilter(watched, event)
+
+    # -----------------------------------------------------------------------
+    # Payment Methods Logic
+    # -----------------------------------------------------------------------
+    def _load_payment_methods(self) -> None:
+        """Populate the Payment Methods table with mock/persisted rows."""
+        self.payment_methods = SettingsManager.load_payment_methods()
+        self.methods_table.clearContents()
+        self.methods_table.setRowCount(len(self.payment_methods))
+
+        for r, m in enumerate(self.payment_methods):
+            name_text = m.get("name", "")
+            name_item = QTableWidgetItem(f"  {name_text}")
+            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.methods_table.setItem(r, 0, name_item)
+
+            status_text = m.get("status", "Active")
+            self.methods_table.setCellWidget(r, 1, self._create_status_badge(status_text))
+            self.methods_table.setCellWidget(r, 2, self._create_method_action_buttons(r))
+
+        row_h = self.methods_table.verticalHeader().defaultSectionSize() or 42
+        hdr_h = self.methods_table.horizontalHeader().height() or 42
+        table_h = hdr_h + (len(self.payment_methods) * row_h) + 8
+        self.methods_table.setFixedHeight(max(94, min(360, table_h)))
+
+        # Update the Payment Method combo in the Accounts form below
+        if hasattr(self, "account_method_combo"):
+            current_choice = self.account_method_combo.currentText()
+            self.account_method_combo.clear()
+            for m in self.payment_methods:
+                if m.get("status", "Active") == "Active":
+                    self.account_method_combo.addItem(m.get("name", ""))
+            idx = self.account_method_combo.findText(current_choice)
+            if idx >= 0:
+                self.account_method_combo.setCurrentIndex(idx)
+
+    def _create_method_action_buttons(self, row_idx: int) -> QWidget:
+        """Outlined Edit and Archive buttons for payment methods."""
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(8)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        edit_btn = QPushButton("Edit")
+        edit_btn.setObjectName("SecondaryBtn")
+        edit_btn.setIcon(get_action_icon("edit", "secondary", 13))
+        edit_btn.setFixedHeight(28)
+        edit_btn.setFixedWidth(72)
+        edit_btn.clicked.connect(lambda _, idx=row_idx: self._edit_payment_method(idx))
+        lay.addWidget(edit_btn)
+
+        is_active = (self.payment_methods[row_idx].get("status", "Active") == "Active")
+        archive_btn = QPushButton("Archive" if is_active else "Restore")
+        archive_btn.setObjectName("SecondaryBtn")
+        archive_btn.setIcon(get_action_icon("archive", "secondary", 13))
+        archive_btn.setFixedHeight(28)
+        archive_btn.setFixedWidth(82)
+        archive_btn.clicked.connect(lambda _, idx=row_idx: self._toggle_archive_payment_method(idx))
+        lay.addWidget(archive_btn)
+
+        return container
+
+    def _add_payment_method(self) -> None:
+        name = self.new_method_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Validation Error", "Payment method name cannot be empty.")
+            self.new_method_input.setFocus()
+            return
+
+        self.payment_methods.append({"name": name, "status": "Active"})
+        SettingsManager.save_payment_methods(self.payment_methods)
+        self.new_method_input.clear()
+        self._load_payment_methods()
+
+    def _edit_payment_method(self, idx: int) -> None:
+        if idx < 0 or idx >= len(self.payment_methods):
+            return
+        curr_name = self.payment_methods[idx].get("name", "")
+        new_name, ok = QInputDialog.getText(
+            self, "Edit Payment Method", "Update payment method name:", text=curr_name
+        )
+        if ok and new_name.strip():
+            self.payment_methods[idx]["name"] = new_name.strip()
+            SettingsManager.save_payment_methods(self.payment_methods)
+            self._load_payment_methods()
+
+    def _toggle_archive_payment_method(self, idx: int) -> None:
+        if idx < 0 or idx >= len(self.payment_methods):
+            return
+        curr = self.payment_methods[idx].get("status", "Active")
+        new_status = "Archived" if curr == "Active" else "Active"
+        self.payment_methods[idx]["status"] = new_status
+        SettingsManager.save_payment_methods(self.payment_methods)
+        self._load_payment_methods()
+
+    # -----------------------------------------------------------------------
+    # Payment Accounts Logic
+    # -----------------------------------------------------------------------
+    def _load_payment_accounts(self) -> None:
+        """Populate the Payment Accounts table or show the empty placeholder."""
+        self.payment_accounts = SettingsManager.load_payment_accounts()
+        self.accounts_table.clearContents()
+        self.accounts_table.setRowCount(len(self.payment_accounts))
+
+        if not self.payment_accounts:
+            self.no_accounts_label.setVisible(True)
+            self.no_accounts_label.resize(self.accounts_table.viewport().size())
+            self.accounts_table.setFixedHeight(120)
+        else:
+            self.no_accounts_label.setVisible(False)
+            for r, acc in enumerate(self.payment_accounts):
+                self.accounts_table.setItem(r, 0, QTableWidgetItem(f"  {acc.get('method', '')}"))
+                self.accounts_table.setItem(r, 1, QTableWidgetItem(str(acc.get('label', ''))))
+                self.accounts_table.setItem(r, 2, QTableWidgetItem(str(acc.get('account_name', ''))))
+                self.accounts_table.setItem(r, 3, QTableWidgetItem(str(acc.get('number_details', '—'))))
+                self.accounts_table.setItem(r, 4, QTableWidgetItem(str(acc.get('invoice', 'Yes'))))
+                self.accounts_table.setItem(r, 5, QTableWidgetItem(str(acc.get('order', 'Yes'))))
+                self.accounts_table.setCellWidget(r, 6, self._create_status_badge(acc.get('status', 'Active')))
+                self.accounts_table.setCellWidget(r, 7, self._create_account_action_buttons(r))
+
+            row_h = self.accounts_table.verticalHeader().defaultSectionSize() or 42
+            hdr_h = self.accounts_table.horizontalHeader().height() or 42
+            table_h = hdr_h + (len(self.payment_accounts) * row_h) + 8
+            self.accounts_table.setFixedHeight(max(120, min(360, table_h)))
+
+    def _create_account_action_buttons(self, row_idx: int) -> QWidget:
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(6)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        del_btn = QPushButton("Remove")
+        del_btn.setObjectName("SecondaryBtn")
+        del_btn.setIcon(get_action_icon("trash", "secondary", 13))
+        del_btn.setFixedHeight(28)
+        del_btn.setFixedWidth(84)
+        del_btn.clicked.connect(lambda _, idx=row_idx: self._remove_payment_account(idx))
+        lay.addWidget(del_btn)
+        return container
+
+    def _remove_payment_account(self, idx: int) -> None:
+        if idx < 0 or idx >= len(self.payment_accounts):
+            return
+        self.payment_accounts.pop(idx)
+        SettingsManager.save_payment_accounts(self.payment_accounts)
+        self._load_payment_accounts()
+
+    def _add_payment_account(self) -> None:
+        method = self.account_method_combo.currentText().strip()
+        label = self.account_label_input.text().strip()
+        name = self.account_name_input.text().strip()
+
+        if not label:
+            QMessageBox.warning(self, "Validation Error", "Display Label is required.")
+            self.account_label_input.setFocus()
+            return
+        if not name:
+            QMessageBox.warning(self, "Validation Error", "Account Name is required.")
+            self.account_name_input.setFocus()
+            return
+
+        new_acc = {
+            "method": method or "GCash",
+            "label": label,
+            "account_name": name,
+            "number_details": "—",
+            "invoice": "Yes",
+            "order": "Yes",
+            "status": "Active",
+        }
+        self.payment_accounts.append(new_acc)
+        SettingsManager.save_payment_accounts(self.payment_accounts)
+        self.account_label_input.clear()
+        self.account_name_input.clear()
+        self._load_payment_accounts()
+
 
 
     # -----------------------------------------------------------------------

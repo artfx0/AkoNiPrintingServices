@@ -11,5 +11,6 @@
             "name": "Chocolate Box",
             "status": "Active"
         }
-    ]
+    ],
+    "payment_accounts": []
 }
