@@ -12,5 +12,53 @@
             "status": "Active"
         }
     ],
-    "payment_accounts": []
+    "payment_accounts": [],
+    "expense_accounts": [
+        {
+            "code": "401",
+            "name": "Labor Expense",
+            "status": "Active"
+        },
+        {
+            "code": "",
+            "name": "Materials Expense",
+            "status": "Active"
+        },
+        {
+            "code": "",
+            "name": "Transportation Expense",
+            "status": "Active"
+        },
+        {
+            "code": "",
+            "name": "Utilities Expense",
+            "status": "Active"
+        }
+    ],
+    "courier_options": [
+        {
+            "name": "Grab",
+            "status": "Active"
+        },
+        {
+            "name": "J&T",
+            "status": "Active"
+        },
+        {
+            "name": "LBC",
+            "status": "Active"
+        }
+    ],
+    "admin_account": {
+        "name": "Earth Justin Anne Lim",
+        "username": "earth",
+        "status": "Active"
+    },
+    "staff_accounts": [
+        {
+            "name": "Carlo Reyes",
+            "username": "dev_staff",
+            "status": "Active"
+        }
+    ]
 }
