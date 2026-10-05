@@ -20,7 +20,7 @@ from ui.icons import get_icon, get_pixmap, get_nav_icon
 # Navigation items per role
 ADMIN_NAV = [
     "Dashboard", "Customers", "Orders", "Payments", "Inventory",
-    "Expenses", "Reports", "Backup", "Users",
+    "Expenses", "Reports", "Backup", "Users", "Settings",
 ]
 STAFF_NAV = ["Dashboard", "Inventory"]
 
@@ -34,6 +34,7 @@ NAV_ICONS = {
     "Reports": "reports",
     "Backup": "backup",
     "Users": "users",
+    "Settings": "settings",
 }
 
 
@@ -242,7 +243,7 @@ class MainWindow(QMainWindow):
 
         if self._is_admin:
             from auth.user_widget import UserWidget
-            from backup.settings_widget import SettingsWidget
+            from backup.settings_widget import SettingsWidget as BackupWidget
             from customers.customer_widget import CustomerWidget
             from expenses.expense_widget import ExpenseWidget
             from inventory.inventory_widget import InventoryWidget
@@ -250,6 +251,7 @@ class MainWindow(QMainWindow):
             from reports.dashboard_widget import DashboardWidget
             from reports.reports_widget import ReportsWidget
             from sales_orders.order_widget import OrderWidget
+            from settings.settings_widget import SettingsWidget
 
             self.dashboard_page = DashboardWidget(user=self.user)
             self.dashboard_page.navigation_requested.connect(self.navigate_to_tab)
@@ -261,8 +263,9 @@ class MainWindow(QMainWindow):
             self.inventory_page = InventoryWidget(user=self.user)
             self.expense_page = ExpenseWidget(user=self.user)
             self.reports_page = ReportsWidget()
-            self.settings_page = SettingsWidget(user=self.user)
+            self.backup_page = BackupWidget(user=self.user)
             self.users_page = UserWidget(current_user=self.user)
+            self.settings_page = SettingsWidget(user=self.user)
 
             self.stack.addWidget(self.dashboard_page)  # 0: Dashboard
             self.stack.addWidget(self.customer_page)   # 1: Customers
@@ -271,8 +274,9 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(self.inventory_page)  # 4: Inventory
             self.stack.addWidget(self.expense_page)    # 5: Expenses
             self.stack.addWidget(self.reports_page)    # 6: Reports
-            self.stack.addWidget(self.settings_page)   # 7: Backup
+            self.stack.addWidget(self.backup_page)     # 7: Backup
             self.stack.addWidget(self.users_page)      # 8: Users
+            self.stack.addWidget(self.settings_page)   # 9: Settings
         else:
             from inventory.inventory_widget import InventoryWidget
             from reports.dashboard_widget import DashboardWidget

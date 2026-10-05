@@ -1,0 +1,15 @@
+{
+    "business_name": "AkoNi Printing Services",
+    "business_address": "124 Rizal St., Brgy. Poblacion, Makati City, Metro Manila",
+    "contact_number": "0917-123-4567",
+    "email_address": "info@akoniprinting.com",
+    "social_contact": "facebook.com/AkoNiPrintingServices",
+    "payment_instructions": "GCash: 0917-123-4567 (Juan D.)\nBDO Unibank Account: 0012-3456-7890 (AkoNi Printing Services)\nPlease send your screenshot proof of payment along with your Order #.",
+    "invoice_reminder": "Production commences upon settlement of the 50% assurance deposit.\nStandard order lead time is 3 to 5 business days following final layout approval.",
+    "product_references": [
+        {
+            "name": "Chocolate Box",
+            "status": "Active"
+        }
+    ]
+}

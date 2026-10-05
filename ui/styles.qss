@@ -586,6 +586,12 @@ QDateEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
     border: 1px solid #D4AF37;
 }
 
+QLineEdit:read-only, QTextEdit:read-only, QPlainTextEdit:read-only {
+    background-color: #F8FAFC;
+    color: #475569;
+    border: 1px solid #E2E8F0;
+}
+
 QComboBox::drop-down {
     border: none;
     width: 20px;
