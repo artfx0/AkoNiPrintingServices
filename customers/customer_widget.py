@@ -346,7 +346,7 @@ class CustomerDetailDialog(QDialog):
         s = status.lower()
         if s in ("paid", "completed"):
             pill.setProperty("status", "paid")
-        elif s in ("pending", "in progress"):
+        elif s == "pending":
             pill.setProperty("status", "pending")
         elif s == "processing":
             pill.setProperty("status", "processing")

@@ -4,7 +4,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 EXPENSE_CATEGORIES = (
-    "Labor", "Materials", "Miscellaneous", "Utility", "Other",
+    "Labor", "Materials", "Miscellaneous", "Utility",
 )
 
 
@@ -74,7 +74,8 @@ class ExpenseManager:
             cursor.execute(sql, params)
             counts = {c: 0 for c in EXPENSE_CATEGORIES}
             for cat, count in cursor.fetchall():
-                counts[cat] = int(count)
+                if cat in counts:
+                    counts[cat] = int(count)
             return counts
         finally:
             cursor.close()

@@ -198,7 +198,7 @@ MATERIALS_DATA = [
 
 # 15 Orders distributed across 6 months:
 # 3 LayoutOnly, 12 ProductOrders
-# Mix of statuses: Pending (2), Processing (1), Paid (3), In Progress (2), Ready (2), Delivered (4), Cancelled (1)
+# Mix of statuses: Pending (2), Processing (3), Paid (3), Ready (2), Delivered (4), Cancelled (1)
 # 2 orders with is_design_fee_deducted = True (quantity >= 100)
 # 2 orders with rush_charge > 0
 ORDERS_DATA = [
@@ -391,7 +391,7 @@ ORDERS_DATA = [
         "order_date": datetime(2026, 7, 26, 14, 0),
         "expected_delivery_date": datetime(2026, 8, 2, 17, 0),
         "actual_delivery_date": None,
-        "status": "In Progress",
+        "status": "Processing",
         "rush_charge": Decimal("0.00"),
         "delivery_address": "16 Magsaysay St., Session Rd., Baguio City",
         "is_design_fee_deducted": True,  # Design fee deducted order 1 (qty >= 100)
@@ -471,7 +471,7 @@ ORDERS_DATA = [
         "order_date": datetime(2026, 8, 28, 15, 0),
         "expected_delivery_date": datetime(2026, 9, 4, 17, 0),
         "actual_delivery_date": None,
-        "status": "In Progress",
+        "status": "Processing",
         "rush_charge": Decimal("0.00"),
         "delivery_address": "Lot 12 Block 5, Commonwealth, Quezon City",
         "is_design_fee_deducted": False,
@@ -552,7 +552,7 @@ ORDERS_DATA = [
 ]
 
 # 20 Expenses across 6 months
-# Categories: Labor (5), Materials (5), Miscellaneous (3), Utility (5), Other (2)
+# Categories: Labor (5), Materials (5), Miscellaneous (5), Utility (5)
 EXPENSES_DATA = [
     # Month 1: April 2026
     {
@@ -605,7 +605,7 @@ EXPENSES_DATA = [
     },
     {
         "expense_idx": 7,
-        "category": "Other",
+        "category": "Miscellaneous",
         "amount": Decimal("950.00"),
         "expense_date": datetime(2026, 5, 29, 15, 45),
         "description": "Local city fire safety compliance and inspection certification",
@@ -710,7 +710,7 @@ EXPENSES_DATA = [
     },
     {
         "expense_idx": 20,
-        "category": "Other",
+        "category": "Miscellaneous",
         "amount": Decimal("1200.00"),
         "expense_date": datetime(2026, 9, 26, 14, 0),
         "description": "Annual local government compliance certificates & health safety permits",
@@ -976,7 +976,7 @@ class SystemSeeder:
             payments_count = 0
 
             # Map from order_idx to (payment_type, payment_method, amount, payment_date)
-            # Payments for orders with status Paid, In Progress, Ready, Delivered:
+            # Payments for orders with status Paid, Processing, Ready, Delivered:
             # Order 1 (Delivered, 1500.00)
             cur.execute(query, (
                 self.order_ids[0], self.admin_user_id, "ProductOrder", "Cash",
@@ -1038,7 +1038,7 @@ class SystemSeeder:
             ))
             payments_count += 1
 
-            # Order 9 (In Progress, total 2800.00): Partial payment (Assurance only, remaining 1400 unpaid receivable)
+            # Order 9 (Processing, total 2800.00): Partial payment (Assurance only, remaining 1400 unpaid receivable)
             cur.execute(query, (
                 self.order_ids[8], self.admin_user_id, "Assurance", "GCash",
                 Decimal("1400.00"), datetime(2026, 7, 26, 14, 15)
@@ -1063,7 +1063,7 @@ class SystemSeeder:
             ))
             payments_count += 2
 
-            # Order 12 (In Progress, total 2200.00): Partial (1100 assurance; 1100 unpaid receivable)
+            # Order 12 (Processing, total 2200.00): Partial (1100 assurance; 1100 unpaid receivable)
             cur.execute(query, (
                 self.order_ids[11], self.admin_user_id, "Assurance", "Cash",
                 Decimal("1100.00"), datetime(2026, 8, 28, 15, 15)
@@ -1104,7 +1104,7 @@ class SystemSeeder:
                     exp["description"],
                 ))
                 self.expense_ids[exp["expense_idx"]] = cur.lastrowid
-            print(f"    -> Inserted {len(self.expense_ids)} expenses across 6 months (Labor, Materials, Utility, Misc, Other).")
+            print(f"    -> Inserted {len(self.expense_ids)} expenses across 6 months (Labor, Materials, Utility, Misc).")
         finally:
             cur.close()
 
@@ -1138,7 +1138,7 @@ class SystemSeeder:
                     ))
                     mv_count += 1
 
-            # 2. OUT Movements (Linked to ProductOrders with status In Progress, Ready, Delivered)
+            # 2. OUT Movements (Linked to ProductOrders with status Processing, Ready, Delivered)
             # Order 1 (Delivered, item 1) -> Material: Corrugated Boxes (idx 9)
             cur.execute(query, (
                 self.material_ids[9],
@@ -1204,7 +1204,7 @@ class SystemSeeder:
             ))
             mv_count += 1
 
-            # Order 9 (In Progress, item 1) -> Material: Matte Sticker Paper (idx 2)
+            # Order 9 (Processing, item 1) -> Material: Matte Sticker Paper (idx 2)
             cur.execute(query, (
                 self.material_ids[2],
                 self.admin_user_id,
@@ -1230,7 +1230,7 @@ class SystemSeeder:
             ))
             mv_count += 1
 
-            # Order 12 (In Progress, item 1) -> Material: Kraft Paper (idx 0)
+            # Order 12 (Processing, item 1) -> Material: Kraft Paper (idx 0)
             cur.execute(query, (
                 self.material_ids[0],
                 self.admin_user_id,

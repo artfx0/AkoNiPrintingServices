@@ -215,7 +215,7 @@ class PaymentManager:
             row = cursor.fetchone()
             if not row:
                 raise ValueError("Order not found.")
-            if row.get("status") in ("Pending", "Processing", "Paid", "In Progress"):
+            if row.get("status") in ("Pending", "Processing", "Paid"):
                 cursor.execute("UPDATE customer_orders SET status = %s WHERE order_id = %s",
                                (target, order_id))
                 self.conn.commit()

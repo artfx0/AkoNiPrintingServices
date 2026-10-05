@@ -421,7 +421,7 @@ class ExpenseWidget(QWidget):
             for r, row in enumerate(rows):
                 eid = row.get("expense_id")
                 edate = _format_datetime(row.get("expense_date"))
-                cat = str(row.get("category") or "Other")
+                cat = str(row.get("category") or "Miscellaneous")
                 amt = Decimal(str(row.get("amount") or 0))
                 desc = str(row.get("description") or "—")
                 rec_by = str(row.get("recorded_by") or "—").strip() or "—"

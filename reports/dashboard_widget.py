@@ -346,14 +346,13 @@ class DashboardWidget(QWidget):
                 " o.total_amount, o.status, o.expected_delivery_date, o.order_type"
                 " FROM customer_orders o"
                 " JOIN customers c ON c.customer_id = o.customer_id"
-                " WHERE o.status IN ('Pending', 'Processing', 'In Progress', 'Ready')"
+                " WHERE o.status IN ('Pending', 'Processing', 'Ready')"
                 " ORDER BY ("
                 "   CASE o.status"
                 "     WHEN 'Pending' THEN 1"
                 "     WHEN 'Processing' THEN 2"
-                "     WHEN 'In Progress' THEN 3"
-                "     WHEN 'Ready' THEN 4"
-                "     ELSE 5"
+                "     WHEN 'Ready' THEN 3"
+                "     ELSE 4"
                 "   END"
                 " ), o.order_date DESC LIMIT %s", (limit,)
             )

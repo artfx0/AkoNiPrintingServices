@@ -12,8 +12,8 @@ from decimal import Decimal
 DESIGN_ASSURANCE_DEDUCTION = Decimal("500.00")
 
 ORDER_TYPES = ("LayoutOnly", "ProductOrder")
-ORDER_STATUSES = ("Pending", "Processing", "Paid", "In Progress", "Ready", "Delivered", "Cancelled")
-CANCELLABLE_STATUSES = ("Pending", "Processing", "In Progress")
+ORDER_STATUSES = ("Pending", "Processing", "Paid", "Ready", "Delivered", "Cancelled")
+CANCELLABLE_STATUSES = ("Pending", "Processing")
 NON_CANCELLABLE_STATUSES = ("Paid", "Ready", "Delivered")
 
 
@@ -183,7 +183,7 @@ class OrderManager:
 
         Business Rule:
           - Cannot cancel if status is: Paid, Ready, or Delivered.
-          - Can cancel only if status is: Pending, Processing, or In Progress.
+          - Can cancel only if status is: Pending or Processing.
         """
         id_str = f" #{order_id:05d}" if order_id else ""
         if current_status in NON_CANCELLABLE_STATUSES:
@@ -191,14 +191,14 @@ class OrderManager:
                 f"Cannot cancel order{id_str} because its status is '{current_status}'.\n\n"
                 f"Business Rule:\n"
                 f"• Cannot cancel if status is: Paid, Ready, or Delivered.\n"
-                f"• Can cancel only if status is: Pending, Processing, or In Progress."
+                f"• Can cancel only if status is: Pending or Processing."
             )
         if current_status == "Cancelled":
             raise ValueError(f"Order{id_str} is already cancelled.")
         if current_status not in CANCELLABLE_STATUSES:
             raise ValueError(
                 f"Cannot cancel order{id_str} with status '{current_status}'. "
-                f"Only Pending, Processing, or In Progress orders can be cancelled."
+                f"Only Pending or Processing orders can be cancelled."
             )
 
     def update_status(self, order_id: int, status: str) -> None:

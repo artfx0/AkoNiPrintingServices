@@ -745,7 +745,7 @@ class OrderWidget(QWidget):
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setObjectName("DangerBtn")
         self.cancel_btn.setIcon(get_action_icon("x-circle", "danger", 15))
-        self.cancel_btn.setToolTip("Cancel selected order (Pending, Processing, In Progress only)")
+        self.cancel_btn.setToolTip("Cancel selected order (Pending or Processing only)")
         self.cancel_btn.clicked.connect(self.cancel_order)
         toolbar.addWidget(self.cancel_btn)
 
@@ -1058,7 +1058,7 @@ class OrderWidget(QWidget):
                         f"Order #{oid:05d} currently has status '{current_status}' and cannot be cancelled.\n\n"
                         f"Business Rule:\n"
                         f"• Cannot cancel if status is: Paid, Ready, or Delivered.\n"
-                        f"• Can cancel only if status is: Pending, Processing, or In Progress."
+                        f"• Can cancel only if status is: Pending or Processing."
                     )
                     return
                 reply = QMessageBox.question(
@@ -1103,7 +1103,7 @@ class OrderWidget(QWidget):
                 f"Order #{oid:05d} currently has status '{current_status}' and cannot be cancelled.\n\n"
                 f"Business Rule:\n"
                 f"• Cannot cancel if status is: Paid, Ready, or Delivered.\n"
-                f"• Can cancel only if status is: Pending, Processing, or In Progress."
+                f"• Can cancel only if status is: Pending or Processing."
             )
             return
 
