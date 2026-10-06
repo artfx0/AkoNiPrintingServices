@@ -59,6 +59,7 @@ def _get_pool():
             password=cfg["password"],
             database=cfg["database"],
             autocommit=False,
+            connection_timeout=5,
         )
     return _pool
 
@@ -77,6 +78,7 @@ def get_server_connection():
         user=cfg["user"],
         password=cfg["password"],
         autocommit=True,
+        connection_timeout=5,
     )
 
 
