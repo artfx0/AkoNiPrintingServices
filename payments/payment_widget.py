@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QLineEdit, QPushButton, QDialog, QFormLayout, QMessageBox, QLabel,
     QComboBox, QDateEdit, QHeaderView, QAbstractItemView, QFileDialog,
-    QFrame,
+    QFrame, QDoubleSpinBox, QScrollArea,
 )
 from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtGui import QDoubleValidator
@@ -193,8 +193,25 @@ class PaymentWidget(QWidget):
         super().__init__(parent)
         self.user = user or {}
         self.selected_status: str | None = None
+        self._orders_by_id: dict[int, dict] = {}
 
-        layout = QVBoxLayout(self)
+        # Root wrapper hosting a smooth QScrollArea so all controls and table remain fully accessible
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        scroll_content = QWidget()
+        scroll_content.setObjectName("PaymentWidgetScrollContent")
+        scroll_content.setStyleSheet("QWidget#PaymentWidgetScrollContent { background-color: #F8FAFC; }")
+
+        layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(28, 24, 28, 28)
         layout.setSpacing(18)
 
@@ -222,7 +239,97 @@ class PaymentWidget(QWidget):
 
         layout.addLayout(kpi_row)
 
-        # 3. Action Toolbar (Search & Payment Type on left, Actions on right)
+        # 3. Inline Record Payment Card (Directly above search bar, no pop-up dialog)
+        form_card = QFrame()
+        form_card.setObjectName("ModuleCardContainer")
+        form_lay = QVBoxLayout(form_card)
+        form_lay.setContentsMargins(18, 14, 18, 14)
+        form_lay.setSpacing(10)
+
+        form_header = QHBoxLayout()
+        form_header.setSpacing(8)
+        form_title = QLabel("Record Payment")
+        form_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #0F172A;")
+        form_subtitle = QLabel("— Process customer payments and settle active orders directly")
+        form_subtitle.setStyleSheet("font-size: 12px; color: #64748B;")
+        form_header.addWidget(form_title)
+        form_header.addWidget(form_subtitle)
+        form_header.addStretch(1)
+        form_lay.addLayout(form_header)
+
+        # Dynamic Order Balance / Selection Hint Label
+        self.inline_preview_label = QLabel("Standalone payment — not linked to any order.")
+        self.inline_preview_label.setStyleSheet("color: #475569; font-size: 12px; padding: 2px 0px;")
+        form_lay.addWidget(self.inline_preview_label)
+
+        # Row 1: Linked Order, Payment Type, Payment Method, Payment Date
+        row1 = QHBoxLayout()
+        row1.setSpacing(10)
+
+        self.input_order = QComboBox()
+        self.input_order.setFixedHeight(36)
+        self.input_order.currentIndexChanged.connect(self._on_inline_order_changed)
+
+        self.input_type = QComboBox()
+        self.input_type.addItems(list(PAYMENT_TYPES))
+        self.input_type.setCurrentText("ProductOrder")
+        self.input_type.setFixedHeight(36)
+
+        self.input_method = QComboBox()
+        self.input_method.addItems(list(PAYMENT_METHODS))
+        self.input_method.setCurrentText("Cash")
+        self.input_method.setFixedHeight(36)
+
+        self.input_date = QDateEdit()
+        self.input_date.setCalendarPopup(True)
+        self.input_date.setDate(QDate.currentDate())
+        self.input_date.setFixedHeight(36)
+
+        row1.addWidget(self.input_order, 4)
+        row1.addWidget(self.input_type, 2)
+        row1.addWidget(self.input_method, 2)
+        row1.addWidget(self.input_date, 2)
+        form_lay.addLayout(row1)
+
+        # Row 2: Amount Paid, Payment Status, Record Payment Button, Clear Button
+        row2 = QHBoxLayout()
+        row2.setSpacing(10)
+
+        self.input_amount = QDoubleSpinBox()
+        self.input_amount.setRange(0.00, 10_000_000.00)
+        self.input_amount.setDecimals(2)
+        self.input_amount.setValue(0.00)
+        self.input_amount.setPrefix("Amount: P")
+        self.input_amount.setFixedHeight(36)
+
+        self.input_status = QComboBox()
+        self.input_status.addItems(list(PAYMENT_STATUSES))
+        self.input_status.setCurrentText("Completed")
+        self.input_status.setFixedHeight(36)
+
+        self.record_payment_btn = QPushButton("Record Payment")
+        self.record_payment_btn.setIcon(get_action_icon("plus", "primary", 15))
+        self.record_payment_btn.setFixedHeight(36)
+        self.record_payment_btn.setFixedWidth(150)
+        self.record_payment_btn.clicked.connect(self.record_payment)
+
+        self.clear_payment_btn = QPushButton("Clear")
+        self.clear_payment_btn.setObjectName("SecondaryBtn")
+        self.clear_payment_btn.setFixedHeight(36)
+        self.clear_payment_btn.clicked.connect(self.clear_payment_form)
+
+        row2.addWidget(self.input_amount, 3)
+        row2.addWidget(self.input_status, 2)
+        row2.addWidget(self.record_payment_btn)
+        row2.addWidget(self.clear_payment_btn)
+        form_lay.addLayout(row2)
+
+        layout.addWidget(form_card)
+
+        # Alias for backward compatibility
+        self.record_btn = self.record_payment_btn
+
+        # 4. Action Toolbar (Search & Payment Type on left, Actions on right)
         toolbar = QHBoxLayout()
         toolbar.setSpacing(12)
 
@@ -230,7 +337,7 @@ class PaymentWidget(QWidget):
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
         self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
-        self.search.setPlaceholderText("Search by payment #, customer name, order #, or method...")
+        self.search.setPlaceholderText("Search customer name, order #, method, or recorder...")
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(260)
         self.search.textChanged.connect(self._load_table_data)
@@ -264,14 +371,9 @@ class PaymentWidget(QWidget):
         self.verify_btn.clicked.connect(self.verify_payment)
         toolbar.addWidget(self.verify_btn)
 
-        self.record_btn = QPushButton("Record Payment")
-        self.record_btn.setIcon(get_action_icon("plus", "primary", 16))
-        self.record_btn.clicked.connect(self.record_payment)
-        toolbar.addWidget(self.record_btn)
-
         layout.addLayout(toolbar)
 
-        # 4. Card Container wrapping Table
+        # 5. Card Container wrapping Table
         card = QFrame()
         card.setObjectName("ModuleCardContainer")
         card_lay = QVBoxLayout(card)
@@ -287,12 +389,20 @@ class PaymentWidget(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        # Status column fixed and well-proportioned
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(7, 130)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(44)
         self.table.doubleClicked.connect(self.print_receipt)
+        # Visually hide the ID column (#1, #2, etc.) while retaining row item at column 0 for internal logic
+        self.table.setColumnHidden(0, True)
 
         card_lay.addWidget(self.table)
         layout.addWidget(card, 1)
+
+        self.scroll_area.setWidget(scroll_content)
+        root_layout.addWidget(self.scroll_area, 1)
 
         self.refresh()
 
@@ -321,14 +431,37 @@ class PaymentWidget(QWidget):
 
     def _create_pill_widget(self, text: str, status_prop: str) -> QWidget:
         container = QWidget()
+        container.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(container)
-        lay.setContentsMargins(6, 4, 6, 4)
-        pill = QLabel(text)
-        pill.setObjectName("StatusPill")
-        pill.setProperty("status", status_prop.lower())
+        lay.setContentsMargins(4, 2, 4, 2)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        st_upper = (status_prop or "").strip().upper()
+        if "COMPLETED" in st_upper:
+            bg_col, text_col, border_col = "#DCFCE7", "#15803D", "#86EFAC"  # Emerald / Green
+        elif "PENDING" in st_upper:
+            bg_col, text_col, border_col = "#FEF3C7", "#92400E", "#FCD34D"  # Warm Amber
+        elif "REFUNDED" in st_upper:
+            bg_col, text_col, border_col = "#F3E8FF", "#6B21A8", "#D8B4FE"  # Royal Purple
+        elif "CANCELLED" in st_upper or "CANCELED" in st_upper:
+            bg_col, text_col, border_col = "#FEE2E2", "#B91C1C", "#FCA5A5"  # Crimson Red
+        else:
+            bg_col, text_col, border_col = "#F1F5F9", "#475569", "#CBD5E1"  # Neutral Slate
+
+        pill = QLabel(f" {text} ")
+        pill.setFixedHeight(26)
         pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pill.style().unpolish(pill)
-        pill.style().polish(pill)
+        pill.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_col};
+                color: {text_col};
+                border: 1.5px solid {border_col};
+                border-radius: 13px;
+                padding: 2px 14px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+        """)
         lay.addWidget(pill)
         return container
 
@@ -421,6 +554,7 @@ class PaymentWidget(QWidget):
             conn.close()
 
     def refresh(self) -> None:
+        self._populate_orders_dropdown()
         self._load_status_counts()
         self._load_table_data()
 
@@ -429,53 +563,113 @@ class PaymentWidget(QWidget):
         conn = self._conn()
         try:
             return ReportManager(conn).unpaid_orders()
+        except Exception:  # noqa: BLE001
+            return []
         finally:
             conn.close()
 
+    def _populate_orders_dropdown(self) -> None:
+        if not hasattr(self, "input_order"):
+            return
+        current_data = self.input_order.currentData()
+        orders = self._open_orders()
+        self._orders_by_id = {o["order_id"]: o for o in orders}
+
+        self.input_order.blockSignals(True)
+        self.input_order.clear()
+        self.input_order.addItem("Standalone Payment (No order linked)", None)
+        for o in orders:
+            oid = o.get("order_id")
+            cname = o.get("customer") or "Customer"
+            bal = Decimal(str(o.get("balance", 0)))
+            self.input_order.addItem(f"Order #{oid:05d} — {cname} (Bal: P{bal:,.2f})", oid)
+
+        # Restore selection if still present
+        if current_data is not None:
+            idx = self.input_order.findData(current_data)
+            if idx >= 0:
+                self.input_order.setCurrentIndex(idx)
+        self.input_order.blockSignals(False)
+        self._on_inline_order_changed()
+
+    def _on_inline_order_changed(self) -> None:
+        if not hasattr(self, "input_order") or not hasattr(self, "inline_preview_label"):
+            return
+        oid = self.input_order.currentData()
+        if oid is None or oid not in self._orders_by_id:
+            self.inline_preview_label.setText("Standalone payment — not linked to any order.")
+            return
+
+        order = self._orders_by_id[oid]
+        total = Decimal(str(order.get("total_amount", 0)))
+        paid = Decimal(str(order.get("paid", 0)))
+        balance = Decimal(str(order.get("balance", total - paid)))
+
+        self.inline_preview_label.setText(
+            f"<b>Order #{oid:05d}</b> for <i>{order.get('customer', 'Customer')}</i> &nbsp;|&nbsp; "
+            f"Total: <b>P{total:,.2f}</b> &nbsp;|&nbsp; Paid: <b>P{paid:,.2f}</b> &nbsp;|&nbsp; "
+            f"<span style='color: #B45309;'>Remaining Balance: <b>P{balance:,.2f}</b></span>"
+        )
+        if self.input_amount.value() <= 0:
+            self.input_amount.setValue(float(balance))
+
+    def clear_payment_form(self) -> None:
+        if hasattr(self, "input_order"):
+            self.input_order.setCurrentIndex(0)
+        if hasattr(self, "input_type"):
+            self.input_type.setCurrentText("ProductOrder")
+        if hasattr(self, "input_method"):
+            self.input_method.setCurrentText("Cash")
+        if hasattr(self, "input_amount"):
+            self.input_amount.setValue(0.00)
+        if hasattr(self, "input_date"):
+            self.input_date.setDate(QDate.currentDate())
+        if hasattr(self, "input_status"):
+            self.input_status.setCurrentText("Completed")
+        if hasattr(self, "inline_preview_label"):
+            self.inline_preview_label.setText("Standalone payment — not linked to any order.")
+
     def record_payment(self) -> None:
-        try:
-            orders = self._open_orders()
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Error", str(exc))
+        amt = Decimal(str(self.input_amount.value()))
+        if amt <= 0:
+            QMessageBox.warning(self, "Record Payment", "Please enter a valid payment amount greater than zero.")
+            self.input_amount.setFocus()
             return
 
-        dlg = PaymentDialog(self, orders=orders)
-        if not dlg.exec():
-            return
-
-        try:
-            vals = dlg.values()
-        except ValueError as exc:
-            QMessageBox.warning(self, "Record Payment", str(exc))
-            return
+        order_id = self.input_order.currentData()
+        ptype = self.input_type.currentText()
+        pmethod = self.input_method.currentText()
+        pdate = self.input_date.date().toPyDate().isoformat()
+        status = self.input_status.currentText()
 
         conn = self._conn()
         try:
             mgr = PaymentManager(conn)
             pid = mgr.record_payment(
-                self._user_id(), vals["amount_paid"],
-                payment_type=vals["payment_type"],
-                payment_method=vals["payment_method"],
-                order_id=vals["order_id"], status=vals["status"]
+                self._user_id(), str(amt),
+                payment_type=ptype,
+                payment_method=pmethod,
+                order_id=order_id, status=status
             )
-            if vals.get("payment_date"):
+            if pdate:
                 cur = conn.cursor()
                 try:
                     cur.execute("UPDATE payments SET payment_date = %s WHERE payment_id = %s",
-                                (vals["payment_date"], pid))
+                                (pdate, pid))
                     conn.commit()
                 finally:
                     cur.close()
 
             bal_str = ""
-            if vals["order_id"] is not None:
-                bal = mgr.order_balance(vals["order_id"])
-                bal_str = f"\nOrder #{vals['order_id']} Balance: P{bal['balance']:,.2f}"
+            if order_id is not None:
+                bal = mgr.order_balance(order_id)
+                bal_str = f"\nOrder #{order_id:05d} Balance: P{bal['balance']:,.2f}"
 
             QMessageBox.information(
                 self, "Payment Recorded",
-                f"Payment #{pid} of P{Decimal(vals['amount_paid']):,.2f} recorded successfully.{bal_str}"
+                f"Payment recorded successfully for P{amt:,.2f}.{bal_str}"
             )
+            self.clear_payment_form()
             self.refresh()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", str(exc))

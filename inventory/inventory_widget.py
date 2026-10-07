@@ -306,7 +306,85 @@ class InventoryWidget(QWidget):
         lay.setContentsMargins(16, 16, 16, 16)
         lay.setSpacing(12)
 
-        # Toolbar
+        # 1. Inline Add Material Card (Above search bar, Admin only, no pop-up dialog)
+        if self._is_admin:
+            form_card = QFrame()
+            form_card.setObjectName("ModuleCardContainer")
+            form_lay = QVBoxLayout(form_card)
+            form_lay.setContentsMargins(18, 14, 18, 14)
+            form_lay.setSpacing(10)
+
+            form_header = QHBoxLayout()
+            form_header.setSpacing(8)
+            form_title = QLabel("Add New Material")
+            form_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #0F172A;")
+            form_subtitle = QLabel("— Add inventory supplies and raw materials directly without pop-up dialogs")
+            form_subtitle.setStyleSheet("font-size: 12px; color: #64748B;")
+            form_header.addWidget(form_title)
+            form_header.addWidget(form_subtitle)
+            form_header.addStretch(1)
+            form_lay.addLayout(form_header)
+
+            # Row 1: Material Name, Unit of Measure, Initial Qty, Low-Stock Threshold, Cost per Unit, Add & Clear Buttons
+            form_row = QHBoxLayout()
+            form_row.setSpacing(10)
+
+            self.input_mat_name = QLineEdit()
+            self.input_mat_name.setObjectName("CustomerFormInput")
+            self.input_mat_name.setPlaceholderText("Material Name * (e.g. Tarpaulin 10oz)")
+            self.input_mat_name.setFixedHeight(36)
+
+            self.input_mat_uom = QLineEdit()
+            self.input_mat_uom.setObjectName("CustomerFormInput")
+            self.input_mat_uom.setPlaceholderText("Unit (e.g. pcs, rolls, sheets)")
+            self.input_mat_uom.setFixedHeight(36)
+            self.input_mat_uom.setText("pcs")
+
+            self.input_mat_qty = QSpinBox()
+            self.input_mat_qty.setRange(0, 1_000_000)
+            self.input_mat_qty.setValue(0)
+            self.input_mat_qty.setPrefix("Initial Qty: ")
+            self.input_mat_qty.setFixedHeight(36)
+
+            self.input_mat_thresh = QSpinBox()
+            self.input_mat_thresh.setRange(0, 1_000_000)
+            self.input_mat_thresh.setValue(10)
+            self.input_mat_thresh.setPrefix("Min Alert: ")
+            self.input_mat_thresh.setFixedHeight(36)
+
+            self.input_mat_cost = QDoubleSpinBox()
+            self.input_mat_cost.setRange(0.00, 1_000_000.00)
+            self.input_mat_cost.setDecimals(2)
+            self.input_mat_cost.setValue(0.00)
+            self.input_mat_cost.setPrefix("Cost: P")
+            self.input_mat_cost.setFixedHeight(36)
+
+            self.add_mat_btn = QPushButton("Add Material")
+            self.add_mat_btn.setIcon(get_action_icon("plus", "primary", 15))
+            self.add_mat_btn.setFixedHeight(36)
+            self.add_mat_btn.setFixedWidth(130)
+            self.add_mat_btn.clicked.connect(self.add_material)
+
+            self.clear_mat_btn = QPushButton("Clear")
+            self.clear_mat_btn.setObjectName("SecondaryBtn")
+            self.clear_mat_btn.setFixedHeight(36)
+            self.clear_mat_btn.clicked.connect(self.clear_material_form)
+
+            form_row.addWidget(self.input_mat_name, 3)
+            form_row.addWidget(self.input_mat_uom, 2)
+            form_row.addWidget(self.input_mat_qty, 2)
+            form_row.addWidget(self.input_mat_thresh, 2)
+            form_row.addWidget(self.input_mat_cost, 2)
+            form_row.addWidget(self.add_mat_btn)
+            form_row.addWidget(self.clear_mat_btn)
+
+            form_lay.addLayout(form_row)
+            lay.addWidget(form_card)
+
+            # Backward compatibility alias
+            self.add_btn = self.add_mat_btn
+
+        # 2. Action Toolbar
         toolbar = QHBoxLayout()
         toolbar.setSpacing(12)
 
@@ -363,14 +441,9 @@ class InventoryWidget(QWidget):
             self.delete_btn.clicked.connect(self.delete_material)
             toolbar.addWidget(self.delete_btn)
 
-            self.add_btn = QPushButton("Add Material")
-            self.add_btn.setIcon(get_action_icon("plus", "primary", 16))
-            self.add_btn.clicked.connect(self.add_material)
-            toolbar.addWidget(self.add_btn)
-
         lay.addLayout(toolbar)
 
-        # Table inside Card
+        # 3. Table inside Card
         card = QFrame()
         card.setObjectName("ModuleCardContainer")
         card_lay = QVBoxLayout(card)
@@ -383,11 +456,23 @@ class InventoryWidget(QWidget):
         self.mat_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.mat_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.mat_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.mat_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.mat_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.mat_table.horizontalHeader().setStretchLastSection(False)
+        self.mat_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.mat_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.mat_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.mat_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.mat_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.mat_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        self.mat_table.setColumnWidth(2, 90)
+        self.mat_table.setColumnWidth(3, 110)
+        self.mat_table.setColumnWidth(4, 110)
+        self.mat_table.setColumnWidth(5, 110)
+        self.mat_table.setColumnWidth(6, 130)
         self.mat_table.verticalHeader().setVisible(False)
-        self.mat_table.verticalHeader().setDefaultSectionSize(40)
+        self.mat_table.verticalHeader().setDefaultSectionSize(44)
         self.mat_table.doubleClicked.connect(self.edit_material if self._is_admin else lambda: self.stock_move("IN"))
+        # Visually hide the ID column (#1, #2, etc.) while retaining it in row 0 for logic
+        self.mat_table.setColumnHidden(0, True)
 
         card_lay.addWidget(self.mat_table)
         lay.addWidget(card, 1)
@@ -474,17 +559,50 @@ class InventoryWidget(QWidget):
         except (AttributeError, ValueError):
             return None
 
+    def clear_material_form(self) -> None:
+        if hasattr(self, "input_mat_name"):
+            self.input_mat_name.clear()
+            self.input_mat_uom.setText("pcs")
+            self.input_mat_qty.setValue(0)
+            self.input_mat_thresh.setValue(10)
+            self.input_mat_cost.setValue(0.00)
+            self.input_mat_name.setFocus()
+
     def _create_stock_pill(self, is_low: bool) -> QWidget:
+        """Return a centered, high-contrast, fully readable Stock Status badge fitted neatly inside the cell."""
         container = QWidget()
+        container.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(container)
-        lay.setContentsMargins(6, 4, 6, 4)
-        pill = QLabel("● Low Stock" if is_low else "● In Stock")
-        pill.setObjectName("StockPill")
-        pill.setProperty("alert", "true" if is_low else "false")
-        pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pill.style().unpolish(pill)
-        pill.style().polish(pill)
-        lay.addWidget(pill)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(0)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        if is_low:
+            text = "● Low Stock"
+            bg_color = "#FEE2E2"      # Soft light red
+            text_color = "#B91C1C"    # Dark high-contrast crimson red
+            border_color = "#FCA5A5"  # Subtle pink-red border
+        else:
+            text = "● In Stock"
+            bg_color = "#DCFCE7"      # Soft light emerald
+            text_color = "#15803D"    # Dark high-contrast forest green
+            border_color = "#86EFAC"  # Subtle emerald green border
+
+        badge = QLabel(text)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setFixedHeight(24)
+        badge.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color};
+                color: {text_color};
+                border: 1px solid {border_color};
+                border-radius: 12px;
+                padding: 2px 12px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+        """)
+        lay.addWidget(badge)
         return container
 
     def _create_type_pill(self, mov_type: str) -> QWidget:
@@ -623,6 +741,34 @@ class InventoryWidget(QWidget):
 
     # -- Admin Material CRUD --
     def add_material(self) -> None:
+        """Inline handler to create a new material directly from the inline form card."""
+        if hasattr(self, "input_mat_name"):
+            name = self.input_mat_name.text().strip()
+            if not name:
+                QMessageBox.warning(self, "Validation Error", "Material Name is required.")
+                self.input_mat_name.setFocus()
+                return
+
+            uom = self.input_mat_uom.text().strip() or "pcs"
+            qty = self.input_mat_qty.value()
+            thresh = self.input_mat_thresh.value()
+            cost = self.input_mat_cost.value()
+
+            conn = self._conn()
+            try:
+                MaterialManager(conn).create_material(
+                    name, uom, qty, thresh, cost
+                )
+                QMessageBox.information(self, "Material Added", f"'{name}' created successfully.")
+                self.refresh()
+                self.clear_material_form()
+            except Exception as exc:  # noqa: BLE001
+                QMessageBox.critical(self, "Error", str(exc))
+            finally:
+                conn.close()
+            return
+
+        # Fallback for dialog if invoked in non-admin or separate context
         dlg = MaterialDialog(self)
         if not dlg.exec():
             return

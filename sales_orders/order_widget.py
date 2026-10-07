@@ -654,7 +654,24 @@ class OrderWidget(QWidget):
         self.user = user or {}
         self._active_status: str | None = None
 
-        layout = QVBoxLayout(self)
+        # Root wrapper hosting a smooth QScrollArea so all controls and table remain fully accessible on any screen size
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        scroll_content = QWidget()
+        scroll_content.setObjectName("OrderWidgetScrollContent")
+        scroll_content.setStyleSheet("QWidget#OrderWidgetScrollContent { background-color: #F8FAFC; }")
+        scroll_content.setMinimumWidth(850)
+
+        layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(28, 24, 28, 28)
         layout.setSpacing(18)
 
@@ -692,14 +709,160 @@ class OrderWidget(QWidget):
 
         layout.addLayout(kpi_row)
 
-        # 3. Action Toolbar (Search & Date filters on left, action buttons on right)
+        # 3. Inline Add Order Card (Directly above search bar, no pop-up dialog)
+        self._customers_map: dict[int, dict] = {}
+        form_card = QFrame()
+        form_card.setObjectName("ModuleCardContainer")
+        form_lay = QVBoxLayout(form_card)
+        form_lay.setContentsMargins(18, 14, 18, 14)
+        form_lay.setSpacing(10)
+
+        form_header = QHBoxLayout()
+        form_header.setSpacing(8)
+        form_title = QLabel("Add New Order")
+        form_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #0F172A;")
+        form_subtitle = QLabel("— Create client orders and jobs directly without pop-up dialogs")
+        form_subtitle.setStyleSheet("font-size: 12px; color: #64748B;")
+        form_header.addWidget(form_title)
+        form_header.addWidget(form_subtitle)
+        form_header.addStretch(1)
+        form_lay.addLayout(form_header)
+
+        # Row 1: Customer, Order Type, Product / Packaging Type, Size / Spec
+        row1 = QHBoxLayout()
+        row1.setSpacing(10)
+
+        self.input_customer = QComboBox()
+        self.input_customer.setObjectName("OrderFormCombo")
+        self.input_customer.setFixedHeight(36)
+        self.input_customer.currentIndexChanged.connect(self._on_inline_customer_changed)
+
+        self.input_type = QComboBox()
+        self.input_type.setObjectName("OrderFormCombo")
+        self.input_type.addItems(list(ORDER_TYPES))
+        self.input_type.setCurrentText("ProductOrder")
+        self.input_type.setFixedHeight(36)
+        self.input_type.currentTextChanged.connect(self._on_inline_type_changed)
+
+        self.input_product = QLineEdit()
+        self.input_product.setObjectName("CustomerFormInput")
+        self.input_product.setPlaceholderText("Product / Service Name * (e.g. Boxes, Tarpaulin)")
+        self.input_product.setFixedHeight(36)
+        self.input_product.setText("Boxes")
+
+        self.input_spec = QLineEdit()
+        self.input_spec.setObjectName("CustomerFormInput")
+        self.input_spec.setPlaceholderText("Size / Specifications (e.g. Medium A4)")
+        self.input_spec.setFixedHeight(36)
+        self.input_spec.setText("Medium (A4)")
+
+        row1.addWidget(self.input_customer, 3)
+        row1.addWidget(self.input_type, 2)
+        row1.addWidget(self.input_product, 3)
+        row1.addWidget(self.input_spec, 2)
+        form_lay.addLayout(row1)
+
+        # Row 2: Quantity, Unit Price, Discount, Rush Charge, Expected Delivery
+        row2 = QHBoxLayout()
+        row2.setSpacing(10)
+
+        self.input_qty = QDoubleSpinBox()
+        self.input_qty.setRange(1, 1_000_000)
+        self.input_qty.setDecimals(0)
+        self.input_qty.setValue(100)
+        self.input_qty.setPrefix("Qty: ")
+        self.input_qty.setFixedHeight(36)
+        self.input_qty.valueChanged.connect(self._recalc_inline_total)
+
+        self.input_price = QDoubleSpinBox()
+        self.input_price.setRange(0, 10_000_000)
+        self.input_price.setDecimals(2)
+        self.input_price.setValue(15.00)
+        self.input_price.setPrefix("Unit P: P")
+        self.input_price.setFixedHeight(36)
+        self.input_price.valueChanged.connect(self._recalc_inline_total)
+
+        self.input_discount = QDoubleSpinBox()
+        self.input_discount.setRange(0, 10_000_000)
+        self.input_discount.setDecimals(2)
+        self.input_discount.setValue(0.00)
+        self.input_discount.setPrefix("Disc: P")
+        self.input_discount.setFixedHeight(36)
+        self.input_discount.valueChanged.connect(self._recalc_inline_total)
+
+        self.input_rush = QDoubleSpinBox()
+        self.input_rush.setRange(0, 1_000_000)
+        self.input_rush.setDecimals(2)
+        self.input_rush.setValue(0.00)
+        self.input_rush.setPrefix("Rush: P")
+        self.input_rush.setFixedHeight(36)
+        self.input_rush.valueChanged.connect(self._recalc_inline_total)
+
+        self.input_expected = QDateEdit()
+        self.input_expected.setCalendarPopup(True)
+        self.input_expected.setDate(QDate.currentDate().addDays(3))
+        self.input_expected.setFixedHeight(36)
+
+        row2.addWidget(self.input_qty, 2)
+        row2.addWidget(self.input_price, 2)
+        row2.addWidget(self.input_discount, 2)
+        row2.addWidget(self.input_rush, 2)
+        row2.addWidget(self.input_expected, 2)
+        form_lay.addLayout(row2)
+
+        # Row 3: Delivery Address + Design Fee Checkbox + Live Total Badge + Add Button + Clear Button
+        row3 = QHBoxLayout()
+        row3.setSpacing(10)
+
+        self.input_address = QLineEdit()
+        self.input_address.setObjectName("CustomerFormInput")
+        self.input_address.setPlaceholderText("Delivery address or pickup instructions (optional)")
+        self.input_address.setFixedHeight(36)
+        row3.addWidget(self.input_address, 4)
+
+        self.input_deduct = QCheckBox(f"Deduct Design Fee (-P{DESIGN_ASSURANCE_DEDUCTION:.0f})")
+        self.input_deduct.setStyleSheet("font-size: 12px; color: #334155; font-weight: 500;")
+        self.input_deduct.toggled.connect(self._recalc_inline_total)
+        row3.addWidget(self.input_deduct, 0)
+
+        self.inline_total_badge = QLabel("Total: P1,500.00")
+        self.inline_total_badge.setStyleSheet("""
+            background-color: #FEF3C7;
+            color: #92400E;
+            border: 1px solid #FCD34D;
+            border-radius: 6px;
+            padding: 4px 12px;
+            font-size: 13px;
+            font-weight: 700;
+        """)
+        self.inline_total_badge.setFixedHeight(36)
+        self.inline_total_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        row3.addWidget(self.inline_total_badge, 0)
+
+        self.add_order_btn = QPushButton("Add Order")
+        self.add_order_btn.setIcon(get_action_icon("plus", "primary", 15))
+        self.add_order_btn.setFixedHeight(36)
+        self.add_order_btn.setFixedWidth(120)
+        self.add_order_btn.clicked.connect(self.add_order)
+        row3.addWidget(self.add_order_btn)
+
+        self.clear_form_btn = QPushButton("Clear")
+        self.clear_form_btn.setObjectName("SecondaryBtn")
+        self.clear_form_btn.setFixedHeight(36)
+        self.clear_form_btn.clicked.connect(self.clear_order_form)
+        row3.addWidget(self.clear_form_btn)
+
+        form_lay.addLayout(row3)
+        layout.addWidget(form_card)
+
+        # 4. Action Toolbar (Search & Date filters on left, action buttons on right)
         toolbar = QHBoxLayout()
         toolbar.setSpacing(12)
 
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
         self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
-        self.search.setPlaceholderText("Search by order # or customer name...")
+        self.search.setPlaceholderText("Search by customer name, order type, or status...")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._load_table_data)
         toolbar.addWidget(self.search, 2)
@@ -755,14 +918,12 @@ class OrderWidget(QWidget):
         self.invoice_btn.clicked.connect(self.generate_invoice)
         toolbar.addWidget(self.invoice_btn)
 
-        self.new_btn = QPushButton("New Order")
-        self.new_btn.setIcon(get_action_icon("plus", "primary", 16))
-        self.new_btn.clicked.connect(self.new_order)
-        toolbar.addWidget(self.new_btn)
+        # Backward compatibility alias for any references to new_btn
+        self.new_btn = self.add_order_btn
 
         layout.addLayout(toolbar)
 
-        # 4. Card Container wrapping the Table
+        # 5. Card Container wrapping the Table
         card = QFrame()
         card.setObjectName("ModuleCardContainer")
         card_lay = QVBoxLayout(card)
@@ -775,11 +936,22 @@ class OrderWidget(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(2, 120)
+        self.table.setColumnWidth(3, 105)
+        self.table.setColumnWidth(4, 115)
+        self.table.setColumnWidth(5, 125)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(44)
         self.table.doubleClicked.connect(self.view_details)
+        self.table.setMinimumHeight(400)
+        # Visually hide the ID column (#00017) while retaining its text in row 0 for logic
+        self.table.setColumnHidden(0, True)
 
         self.empty_label = QLabel("No orders found matching the selected filter.")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -790,6 +962,11 @@ class OrderWidget(QWidget):
         card_lay.addWidget(self.empty_label)
         layout.addWidget(card, 1)
 
+        self.scroll_area.setWidget(scroll_content)
+        root_layout.addWidget(self.scroll_area)
+
+        self._populate_customers_dropdown()
+        self._recalc_inline_total()
         self._update_all_orders_btn(True)
         self.refresh()
 
@@ -920,67 +1097,208 @@ class OrderWidget(QWidget):
                 tot = Decimal(str(row.get("total_amount") or 0))
                 date_str = str(row.get("order_date") or "")[:10]
                 status_str = str(row.get("status") or "Pending")
-
                 self.table.setItem(r, 0, QTableWidgetItem(f"#{oid:05d}"))
                 self.table.setItem(r, 1, QTableWidgetItem(str(row.get("customer_name") or "—")))
                 self.table.setItem(r, 2, QTableWidgetItem(str(row.get("order_type") or "ProductOrder")))
                 self.table.setItem(r, 3, QTableWidgetItem(date_str or "—"))
                 self.table.setItem(r, 4, QTableWidgetItem(f"P{tot:,.2f}"))
 
-                # Status pill widget
-                pill = QLabel(status_str)
-                pill.setObjectName("StatusPill")
-                pill.setProperty("status", status_str.lower())
-                pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                pill.style().unpolish(pill)
-                pill.style().polish(pill)
-
-                pill_container = QWidget()
-                pill_lay = QHBoxLayout(pill_container)
-                pill_lay.setContentsMargins(6, 4, 6, 4)
-                pill_lay.addWidget(pill)
-                self.table.setCellWidget(r, 5, pill_container)
+                # Status badge widget (well readable, unclipped descenders)
+                status_widget = self._create_readable_status_pill(status_str)
+                self.table.setCellWidget(r, 5, status_widget)
 
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", f"Failed to load orders:\n{exc}")
         finally:
             conn.close()
 
-    def new_order(self, preselected_customer_id: int | None = None) -> None:
+    def _populate_customers_dropdown(self) -> None:
         conn = self._conn()
         try:
             customers = CustomerManager(conn).list_customers()
+        except Exception:
+            customers = []
         finally:
             conn.close()
+
+        self._customers_map = {c["customer_id"]: c for c in customers}
+        curr_id = self.input_customer.currentData()
+        self.input_customer.blockSignals(True)
+        self.input_customer.clear()
         if not customers:
-            QMessageBox.warning(self, "No Customers", "Please add at least one customer before creating an order.")
+            self.input_customer.addItem("No customers found — add one first", None)
+        else:
+            for c in customers:
+                self.input_customer.addItem(
+                    f"#{c['customer_id']}: {c['first_name']} {c['last_name']}",
+                    c["customer_id"]
+                )
+        if curr_id is not None:
+            idx = self.input_customer.findData(curr_id)
+            if idx >= 0:
+                self.input_customer.setCurrentIndex(idx)
+        self.input_customer.blockSignals(False)
+        self._on_inline_customer_changed()
+
+    def _on_inline_customer_changed(self) -> None:
+        cid = self.input_customer.currentData()
+        if cid and cid in self._customers_map:
+            c = self._customers_map[cid]
+            addr = str(c.get("address") or "").strip()
+            if addr:
+                self.input_address.setText(addr)
+
+    def _on_inline_type_changed(self, order_type: str) -> None:
+        if order_type == "LayoutOnly":
+            self.input_product.setText("Layout Design Service")
+            self.input_spec.setText("Digital File")
+            self.input_qty.setValue(1)
+            self.input_qty.setEnabled(False)
+            self.input_price.setValue(500.00)
+        else:
+            self.input_qty.setEnabled(True)
+            if self.input_product.text() == "Layout Design Service":
+                self.input_product.setText("Boxes")
+                self.input_spec.setText("Medium (A4)")
+                self.input_qty.setValue(100)
+                self.input_price.setValue(15.00)
+        self._recalc_inline_total()
+
+    def _recalc_inline_total(self) -> None:
+        try:
+            qty = Decimal(str(self.input_qty.value()))
+            price = Decimal(str(self.input_price.value()))
+            disc = Decimal(str(self.input_discount.value()))
+            rush = Decimal(str(self.input_rush.value()))
+            sub = (qty * price) - disc
+            tot = sub + rush
+            if self.input_deduct.isChecked():
+                tot -= DESIGN_ASSURANCE_DEDUCTION
+            tot = max(tot, Decimal("0.00"))
+        except Exception:
+            tot = Decimal("0.00")
+        self.inline_total_badge.setText(f"Total: P{tot:,.2f}")
+
+    def clear_order_form(self) -> None:
+        self.input_type.setCurrentText("ProductOrder")
+        self.input_product.setText("Boxes")
+        self.input_spec.setText("Medium (A4)")
+        self.input_qty.setValue(100)
+        self.input_price.setValue(15.00)
+        self.input_discount.setValue(0.00)
+        self.input_rush.setValue(0.00)
+        self.input_expected.setDate(QDate.currentDate().addDays(3))
+        self.input_deduct.setChecked(False)
+        self._on_inline_customer_changed()
+        self._recalc_inline_total()
+
+    def add_order(self) -> None:
+        cid = self.input_customer.currentData()
+        if cid is None:
+            QMessageBox.warning(self, "No Customer Selected", "Please select a customer first before adding an order.")
             return
 
-        dlg = NewOrderDialog(self, customers=customers, preselected_customer_id=preselected_customer_id)
-        if not dlg.exec():
+        order_type = self.input_type.currentText()
+        prod_name = self.input_product.text().strip()
+        spec_name = self.input_spec.text().strip()
+        if not prod_name:
+            QMessageBox.warning(self, "Validation Error", "Product / Service Name cannot be empty.")
             return
-        try:
-            vals = dlg.values()
-        except ValueError as exc:
-            QMessageBox.warning(self, "Error", str(exc))
-            return
+
+        qty = int(self.input_qty.value())
+        price = Decimal(str(self.input_price.value()))
+        discount = Decimal(str(self.input_discount.value()))
+        rush = Decimal(str(self.input_rush.value()))
+        is_deducted = self.input_deduct.isChecked()
+        exp_date = self.input_expected.date().toPyDate().isoformat()
+        delivery_addr = self.input_address.text().strip()
+
+        item = {
+            "packaging_type": prod_name,
+            "finish_type": "Standard",
+            "size": spec_name or "Standard",
+            "quantity": qty,
+            "unit_price": price,
+            "discount": discount,
+        }
 
         conn = self._conn()
         try:
             oid = OrderManager(conn).create_order(
-                vals["customer_id"], self._user_id(),
-                order_type=vals["order_type"],
-                expected_delivery_date=vals["expected_delivery_date"],
-                delivery_address=vals["delivery_address"],
-                rush_charge=vals["rush_charge"],
-                is_design_fee_deducted=vals["is_design_fee_deducted"],
-                items=vals["items"])
-            QMessageBox.information(self, "Order Created", f"Order #{oid:05d} has been successfully created.")
+                customer_id=cid,
+                recorded_by_user_id=self._user_id(),
+                order_type=order_type,
+                expected_delivery_date=exp_date,
+                delivery_address=delivery_addr,
+                rush_charge=rush,
+                is_design_fee_deducted=is_deducted,
+                items=[item],
+            )
+            QMessageBox.information(
+                self,
+                "Order Created",
+                f"Order #{oid:05d} has been successfully created and recorded."
+            )
             self.refresh()
+            self.clear_order_form()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", f"Failed to save order:\n{exc}")
         finally:
             conn.close()
+
+    def new_order(self, preselected_customer_id: int | None = None) -> None:
+        """Inline handler for creating a new order. Pre-selects customer and focuses input."""
+        self._populate_customers_dropdown()
+        if preselected_customer_id is not None:
+            idx = self.input_customer.findData(preselected_customer_id)
+            if idx >= 0:
+                self.input_customer.setCurrentIndex(idx)
+        self.input_product.setFocus()
+        self.input_product.selectAll()
+
+    def _create_readable_status_pill(self, status_str: str) -> QWidget:
+        """Return a centered, high-contrast, fully readable status badge fitted neatly inside the table cell."""
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(0)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        st_clean = status_str.strip().capitalize()
+        st_lower = status_str.strip().lower()
+
+        # Custom high-contrast palette with subtle borders preventing clipped letters
+        color_map = {
+            "paid": ("#15803D", "#DCFCE7", "#86EFAC"),         # Forest green on light green
+            "completed": ("#15803D", "#DCFCE7", "#86EFAC"),
+            "pending": ("#92400E", "#FEF3C7", "#FCD34D"),      # Warm amber brown on cream
+            "processing": ("#1E40AF", "#DBEAFE", "#93C5FD"),   # Strong blue on soft blue
+            "ready": ("#6B21A8", "#F3E8FF", "#D8B4FE"),        # Deep purple on soft violet
+            "delivered": ("#0F766E", "#CCFBF1", "#5EEAD4"),    # Deep teal on mint
+            "cancelled": ("#B91C1C", "#FEE2E2", "#FCA5A5"),    # Dark red on soft rose
+        }
+        text_color, bg_color, border_color = color_map.get(
+            st_lower,
+            ("#334155", "#F1F5F9", "#CBD5E1")
+        )
+
+        badge = QLabel(f"● {st_clean}")
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setFixedHeight(24)
+        badge.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color};
+                color: {text_color};
+                border: 1px solid {border_color};
+                border-radius: 12px;
+                padding: 2px 10px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+        """)
+        lay.addWidget(badge)
+        return container
 
     def _load_selected(self) -> dict | None:
         oid = self._selected_id()

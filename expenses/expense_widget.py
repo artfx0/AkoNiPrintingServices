@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QLineEdit, QPushButton, QDialog, QFormLayout, QMessageBox, QLabel,
     QComboBox, QDateEdit, QCheckBox, QHeaderView, QAbstractItemView,
-    QFrame,
+    QFrame, QDoubleSpinBox, QScrollArea,
 )
 from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtGui import QDoubleValidator
@@ -156,7 +156,23 @@ class ExpenseWidget(QWidget):
         self.user = user or {}
         self.selected_category: str | None = None
 
-        layout = QVBoxLayout(self)
+        # Root wrapper hosting a smooth QScrollArea so all controls and table remain fully accessible
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        scroll_content = QWidget()
+        scroll_content.setObjectName("ExpenseWidgetScrollContent")
+        scroll_content.setStyleSheet("QWidget#ExpenseWidgetScrollContent { background-color: #F8FAFC; }")
+
+        layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(28, 24, 28, 28)
         layout.setSpacing(18)
 
@@ -204,7 +220,85 @@ class ExpenseWidget(QWidget):
 
         layout.addLayout(kpi_row)
 
-        # 4. Action Toolbar (Search on left, Date range, Actions on right)
+        # 4. Inline Record Expense Card (Directly above search bar, no pop-up dialog)
+        form_card = QFrame()
+        form_card.setObjectName("ModuleCardContainer")
+        form_lay = QVBoxLayout(form_card)
+        form_lay.setContentsMargins(18, 14, 18, 14)
+        form_lay.setSpacing(10)
+
+        form_header = QHBoxLayout()
+        form_header.setSpacing(8)
+        form_title = QLabel("Record Operating Expense")
+        form_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #0F172A;")
+        form_subtitle = QLabel("— Log material purchases, overhead, labor, and disbursements directly")
+        form_subtitle.setStyleSheet("font-size: 12px; color: #64748B;")
+        form_header.addWidget(form_title)
+        form_header.addWidget(form_subtitle)
+        form_header.addStretch(1)
+        form_lay.addLayout(form_header)
+
+        # Row 1: Date, Category, Amount, Description
+        row1 = QHBoxLayout()
+        row1.setSpacing(10)
+
+        self.input_date = QDateEdit()
+        self.input_date.setCalendarPopup(True)
+        self.input_date.setDate(QDate.currentDate())
+        self.input_date.setFixedHeight(36)
+
+        self.input_category = QComboBox()
+        self.input_category.addItems(list(EXPENSE_CATEGORIES))
+        self.input_category.setCurrentText("Materials")
+        self.input_category.setFixedHeight(36)
+
+        self.input_amount = QDoubleSpinBox()
+        self.input_amount.setRange(0.00, 10_000_000.00)
+        self.input_amount.setDecimals(2)
+        self.input_amount.setValue(0.00)
+        self.input_amount.setPrefix("Amount: P")
+        self.input_amount.setFixedHeight(36)
+
+        self.input_desc = QLineEdit()
+        self.input_desc.setObjectName("CustomerFormInput")
+        self.input_desc.setPlaceholderText("Expense Description / Vendor / Purpose *")
+        self.input_desc.setFixedHeight(36)
+
+        row1.addWidget(self.input_date, 2)
+        row1.addWidget(self.input_category, 2)
+        row1.addWidget(self.input_amount, 2)
+        row1.addWidget(self.input_desc, 4)
+        form_lay.addLayout(row1)
+
+        # Row 2: Linked Inbound Supply Movement, Record Button, Clear Button
+        row2 = QHBoxLayout()
+        row2.setSpacing(10)
+
+        self.input_link_movement = QComboBox()
+        self.input_link_movement.setFixedHeight(36)
+
+        self.record_expense_btn = QPushButton("Record Expense")
+        self.record_expense_btn.setIcon(get_action_icon("plus", "primary", 15))
+        self.record_expense_btn.setFixedHeight(36)
+        self.record_expense_btn.setFixedWidth(150)
+        self.record_expense_btn.clicked.connect(self.add_expense)
+
+        self.clear_expense_btn = QPushButton("Clear")
+        self.clear_expense_btn.setObjectName("SecondaryBtn")
+        self.clear_expense_btn.setFixedHeight(36)
+        self.clear_expense_btn.clicked.connect(self.clear_expense_form)
+
+        row2.addWidget(self.input_link_movement, 5)
+        row2.addWidget(self.record_expense_btn)
+        row2.addWidget(self.clear_expense_btn)
+        form_lay.addLayout(row2)
+
+        layout.addWidget(form_card)
+
+        # Backward compatibility alias
+        self.add_btn = self.record_expense_btn
+
+        # 5. Action Toolbar (Search on left, Date range, Actions on right)
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
 
@@ -212,7 +306,7 @@ class ExpenseWidget(QWidget):
         self.search = QLineEdit()
         self.search.setObjectName("TableSearchInput")
         self.search.addAction(get_icon("search", color="#94A3B8", size=16), QLineEdit.ActionPosition.LeadingPosition)
-        self.search.setPlaceholderText("Search description, recorder, or expense #...")
+        self.search.setPlaceholderText("Search description, recorder, or expense...")
         self.search.setClearButtonEnabled(True)
         self.search.setMinimumWidth(260)
         self.search.textChanged.connect(self._load_table_data)
@@ -250,14 +344,9 @@ class ExpenseWidget(QWidget):
         self.delete_btn.clicked.connect(self.delete_expense)
         toolbar.addWidget(self.delete_btn)
 
-        self.add_btn = QPushButton("Record Expense")
-        self.add_btn.setIcon(get_action_icon("plus", "primary", 16))
-        self.add_btn.clicked.connect(self.add_expense)
-        toolbar.addWidget(self.add_btn)
-
         layout.addLayout(toolbar)
 
-        # 5. Card Container wrapping the Table
+        # 6. Card Container wrapping the Table
         card = QFrame()
         card.setObjectName("ModuleCardContainer")
         card_lay = QVBoxLayout(card)
@@ -271,14 +360,15 @@ class ExpenseWidget(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(42)
+        self.table.verticalHeader().setDefaultSectionSize(44)
 
         header = self.table.horizontalHeader()
         header.setHighlightSections(False)
 
-        # Col 0: Expense # (Fixed width: 95px)
+        # Col 0: Expense # (Fixed width: 95px, hidden visually)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(0, 95)
+        self.table.setColumnHidden(0, True)
 
         # Col 1: Date (Fixed width: 155px)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
@@ -305,6 +395,9 @@ class ExpenseWidget(QWidget):
 
         card_lay.addWidget(self.table)
         layout.addWidget(card, 1)
+
+        self.scroll_area.setWidget(scroll_content)
+        root_layout.addWidget(self.scroll_area, 1)
 
         self.refresh()
 
@@ -344,27 +437,37 @@ class ExpenseWidget(QWidget):
 
     def _create_category_pill(self, cat: str) -> QWidget:
         container = QWidget()
+        container.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(container)
-        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setContentsMargins(4, 2, 4, 2)
         lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pill = QLabel(cat)
-        pill.setObjectName("StatusPill")
 
-        cat_lower = cat.lower()
+        cat_lower = (cat or "").strip().lower()
         if "labor" in cat_lower:
-            pill.setProperty("status", "processing")  # Blue
+            bg_col, text_col, border_col = "#DBEAFE", "#1D4ED8", "#93C5FD"  # Blue
         elif "material" in cat_lower:
-            pill.setProperty("status", "completed")   # Green
+            bg_col, text_col, border_col = "#DCFCE7", "#15803D", "#86EFAC"  # Emerald / Green
         elif "misc" in cat_lower:
-            pill.setProperty("status", "refunded")    # Purple
-        elif "utility" in cat_lower:
-            pill.setProperty("status", "pending")     # Orange
+            bg_col, text_col, border_col = "#F3E8FF", "#6B21A8", "#D8B4FE"  # Purple
+        elif "util" in cat_lower:
+            bg_col, text_col, border_col = "#FFEDD5", "#C2410C", "#FDBA74"  # Amber / Orange
         else:
-            pill.setProperty("status", "other")       # Grey
+            bg_col, text_col, border_col = "#F1F5F9", "#475569", "#CBD5E1"  # Slate
 
+        pill = QLabel(f" {cat} ")
+        pill.setFixedHeight(26)
         pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pill.style().unpolish(pill)
-        pill.style().polish(pill)
+        pill.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_col};
+                color: {text_col};
+                border: 1.5px solid {border_col};
+                border-radius: 13px;
+                padding: 2px 14px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+        """)
         lay.addWidget(pill)
         return container
 
@@ -465,8 +568,52 @@ class ExpenseWidget(QWidget):
             conn.close()
 
     def refresh(self) -> None:
+        self._populate_movements_dropdown()
         self._load_category_counts()
         self._load_table_data()
+
+    def _populate_movements_dropdown(self) -> None:
+        if not hasattr(self, "input_link_movement"):
+            return
+        current_data = self.input_link_movement.currentData()
+        conn = self._conn()
+        try:
+            in_movs = _unlinked_in_movements(conn)
+        except Exception:  # noqa: BLE001
+            in_movs = []
+        finally:
+            conn.close()
+
+        self.input_link_movement.blockSignals(True)
+        self.input_link_movement.clear()
+        self.input_link_movement.addItem("Link Inbound Stock Movement (Optional: Direct Overhead)", None)
+        for m in in_movs:
+            mid = m.get("movement_id")
+            mname = m.get("material_name") or "Item"
+            qty = m.get("quantity") or 0
+            uom = m.get("unit_of_measure") or "pcs"
+            self.input_link_movement.addItem(
+                f"Movement #{mid} — {mname} (+{qty} {uom})",
+                mid
+            )
+
+        if current_data is not None:
+            idx = self.input_link_movement.findData(current_data)
+            if idx >= 0:
+                self.input_link_movement.setCurrentIndex(idx)
+        self.input_link_movement.blockSignals(False)
+
+    def clear_expense_form(self) -> None:
+        if hasattr(self, "input_date"):
+            self.input_date.setDate(QDate.currentDate())
+        if hasattr(self, "input_category"):
+            self.input_category.setCurrentText("Materials")
+        if hasattr(self, "input_amount"):
+            self.input_amount.setValue(0.00)
+        if hasattr(self, "input_desc"):
+            self.input_desc.clear()
+        if hasattr(self, "input_link_movement"):
+            self.input_link_movement.setCurrentIndex(0)
 
     def clear_filters(self) -> None:
         self.from_check.setChecked(False)
@@ -478,37 +625,42 @@ class ExpenseWidget(QWidget):
         self.refresh()
 
     def add_expense(self) -> None:
-        conn = self._conn()
-        try:
-            in_movs = _unlinked_in_movements(conn)
-        finally:
-            conn.close()
-
-        dlg = ExpenseDialog(self, in_movements=in_movs)
-        if not dlg.exec():
+        amount = Decimal(str(self.input_amount.value()))
+        if amount <= 0:
+            QMessageBox.warning(self, "Record Expense", "Please enter a valid expense amount greater than zero.")
+            self.input_amount.setFocus()
             return
 
-        try:
-            vals = dlg.values()
-        except ValueError as exc:
-            QMessageBox.warning(self, "Record Expense", str(exc))
+        desc = self.input_desc.text().strip()
+        if not desc:
+            QMessageBox.warning(self, "Record Expense", "Please enter an expense description or purpose.")
+            self.input_desc.setFocus()
             return
+
+        category = self.input_category.currentText()
+        if category not in EXPENSE_CATEGORIES:
+            QMessageBox.warning(self, "Record Expense", f"Category must be one of {EXPENSE_CATEGORIES}")
+            return
+
+        edate = self.input_date.date().toPyDate().isoformat()
+        movement_id = self.input_link_movement.currentData()
 
         conn = self._conn()
         try:
             mgr = ExpenseManager(conn)
             eid = mgr.create_expense(
-                vals["category"], vals["amount"], vals["description"],
+                category, str(amount), desc,
                 recorded_by_user_id=self._user_id(),
-                expense_date=vals["expense_date"]
+                expense_date=edate
             )
-            if vals.get("movement_id") is not None:
-                mgr.link_movement(eid, vals["movement_id"])
+            if movement_id is not None:
+                mgr.link_movement(eid, movement_id)
 
             QMessageBox.information(
                 self, "Expense Recorded",
-                f"Expense #{eid} of P{Decimal(vals['amount']):,.2f} recorded successfully."
+                f"Expense recorded successfully for P{amount:,.2f}."
             )
+            self.clear_expense_form()
             self.refresh()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", str(exc))
