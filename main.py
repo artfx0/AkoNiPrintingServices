@@ -35,6 +35,9 @@ def main() -> int:
     # show the login dialog again.
     app.setQuitOnLastWindowClosed(False)
 
+    from ui.icons import get_app_logo_icon
+    app.setWindowIcon(get_app_logo_icon(64))
+
     # Phase 1: Rich Gold theme — one global stylesheet for every window.
     qss = load_app_stylesheet()
     if qss:

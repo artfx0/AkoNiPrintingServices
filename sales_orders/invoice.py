@@ -20,14 +20,24 @@ def generate_invoice_pdf(order: dict, filepath: str | Path) -> str:
     from reportlab.lib.pagesizes import LETTER
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                    Table, TableStyle)
+                                    Table, TableStyle, Image as RLImage)
 
     path = str(filepath)
     doc = SimpleDocTemplate(path, pagesize=LETTER,
                             leftMargin=40, rightMargin=40,
                             topMargin=40, bottomMargin=40)
     styles = getSampleStyleSheet()
-    story = [
+
+    story = []
+    logo_path = Path(__file__).resolve().parent.parent / "assets" / "logo.png"
+    if logo_path.exists():
+        try:
+            story.append(RLImage(str(logo_path), width=50, height=50))
+            story.append(Spacer(1, 4))
+        except Exception:  # noqa: BLE001
+            pass
+
+    story.extend([
         Paragraph("AkoNi Printing Services", styles["Title"]),
         Paragraph("Charge Invoice", styles["Heading2"]),
         Spacer(1, 6),
@@ -43,7 +53,7 @@ def generate_invoice_pdf(order: dict, filepath: str | Path) -> str:
             f"Expected: {order.get('expected_delivery_date') or '—'}",
             styles["Normal"]),
         Spacer(1, 12),
-    ]
+    ])
 
     rows = [["#", "Packaging", "Size", "Qty", "Unit Price", "Discount", "Line Total"]]
     subtotal = Decimal("0.00")

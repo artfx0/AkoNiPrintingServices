@@ -14,8 +14,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSize
 
-from database.database import get_connection
-from ui.icons import get_icon, get_pixmap, get_nav_icon
+from ui.icons import get_icon, get_pixmap, get_nav_icon, get_app_logo_pixmap, get_app_logo_icon
 
 # Navigation items per role
 ADMIN_NAV = [
@@ -48,6 +47,7 @@ class MainWindow(QMainWindow):
         role_label = "Admin" if self._is_admin else "Staff"
         username = user.get("username", "")
         self.setWindowTitle(f"AkoNi Printing Services — {role_label} ({username})")
+        self.setWindowIcon(get_app_logo_icon(64))
         self.resize(1280, 800)
         self.setMinimumSize(1080, 680)
 
@@ -190,9 +190,10 @@ class MainWindow(QMainWindow):
 
         brand_icon = QLabel()
         brand_icon.setObjectName("BrandLogoIcon")
-        brand_icon.setFixedSize(34, 34)
+        brand_icon.setFixedSize(38, 38)
         brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_icon.setPixmap(get_pixmap("printer", color="#D4AF37", size=20))
+        brand_icon.setStyleSheet("background: transparent; border: none;")
+        brand_icon.setPixmap(get_app_logo_pixmap(size=38))
         brand_box.addWidget(brand_icon)
 
         brand_text_box = QVBoxLayout()

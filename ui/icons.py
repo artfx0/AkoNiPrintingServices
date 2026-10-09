@@ -151,3 +151,28 @@ def get_action_icon(name: str, tone: str = "secondary", size: int = 16) -> QIcon
     icon.addPixmap(get_pixmap(name, color=active_col, size=size), QIcon.Mode.Active)
     return icon
 
+
+def get_app_logo_pixmap(size: int = 48) -> QPixmap:
+    """Return the official Ako-Ni Printing Services circular gold logo as a scaled QPixmap."""
+    from pathlib import Path
+    base_dir = Path(__file__).resolve().parent.parent
+    logo_path = base_dir / "assets" / "logo.png"
+    if not logo_path.exists():
+        logo_path = base_dir / "ui" / "assets" / "logo.png"
+    if logo_path.exists():
+        pix = QPixmap(str(logo_path))
+        if not pix.isNull():
+            return pix.scaled(
+                size, size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+    # Fallback to vector printer icon
+    return get_pixmap("printer", color="#D4AF37", size=size)
+
+
+def get_app_logo_icon(size: int = 64) -> QIcon:
+    """Return the official Ako-Ni logo as a window/taskbar QIcon."""
+    return QIcon(get_app_logo_pixmap(size=size))
+
+

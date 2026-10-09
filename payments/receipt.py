@@ -21,14 +21,24 @@ def generate_receipt_pdf(payment: dict, order: dict | None,
     from reportlab.lib.pagesizes import LETTER
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                    Table, TableStyle)
+                                    Table, TableStyle, Image as RLImage)
 
     path = str(filepath)
     doc = SimpleDocTemplate(path, pagesize=LETTER,
                             leftMargin=40, rightMargin=40,
                             topMargin=40, bottomMargin=40)
     styles = getSampleStyleSheet()
-    story = [
+
+    story = []
+    logo_path = Path(__file__).resolve().parent.parent / "assets" / "logo.png"
+    if logo_path.exists():
+        try:
+            story.append(RLImage(str(logo_path), width=50, height=50))
+            story.append(Spacer(1, 4))
+        except Exception:  # noqa: BLE001
+            pass
+
+    story.extend([
         Paragraph("AkoNi Printing Services", styles["Title"]),
         Paragraph("Service Receipt", styles["Heading2"]),
         Spacer(1, 6),
@@ -43,7 +53,7 @@ def generate_receipt_pdf(payment: dict, order: dict | None,
             f"Order: {payment.get('order_id') or 'Layout-Only / walk-in'}",
             styles["Normal"]),
         Spacer(1, 12),
-    ]
+    ])
 
     if order:
         rows = [["Order #", "Type", "Status", "Total", "Paid", "Balance"],

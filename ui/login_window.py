@@ -20,7 +20,7 @@ from PyQt6.QtGui import QColor, QCursor
 from auth.login import authenticate
 from auth.session import Session
 from database.database import get_connection
-from ui.icons import get_icon, get_pixmap
+from ui.icons import get_icon, get_pixmap, get_app_logo_pixmap, get_app_logo_icon
 
 
 class LoginWindow(QDialog):
@@ -29,6 +29,7 @@ class LoginWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AkoNi Printing Services — Sign In")
+        self.setWindowIcon(get_app_logo_icon(64))
         self.setFixedSize(860, 540)
         self.user: dict | None = None
 
@@ -97,15 +98,12 @@ class LoginWindow(QDialog):
         lay.setContentsMargins(36, 42, 36, 36)
         lay.setSpacing(20)
 
-        # Brand Logo Badge
+        # Brand Logo Badge (Official circular gold emblem logo)
         brand_icon = QLabel()
-        brand_icon.setFixedSize(54, 54)
+        brand_icon.setFixedSize(76, 76)
         brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_icon.setStyleSheet("""
-            background-color: #FEF3C7;
-            border-radius: 14px;
-        """)
-        brand_icon.setPixmap(get_pixmap("printer", color="#B45309", size=28))
+        brand_icon.setStyleSheet("background: transparent; border: none;")
+        brand_icon.setPixmap(get_app_logo_pixmap(size=76))
         lay.addWidget(brand_icon)
 
         # Brand Title & Tagline
